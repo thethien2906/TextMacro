@@ -11,3 +11,4 @@ uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
 rdev = "0.5.3"
 log = "0.4.29"
+arboard = "3.6.1"
