@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 
+use crate::core::action_executor::ActionExecutor;
 use crate::models::config::Config;
 use crate::models::engine_commands::{MacroCreateRequest, MacroUpdateRequest};
-use crate::models::engine_responses::EngineError;
+use crate::models::engine_responses::{EngineError, ExecutionResult};
 use crate::models::macro_model::{ActionType, Macro, MacroCategory};
 use crate::storage::macro_repository::StorageManager;
 
@@ -339,6 +340,29 @@ impl Engine {
         }
 
         Ok(self.config.clone())
+    }
+
+    /// Execute a macro by ID (manual execution from UI / Command Palette).
+    pub fn execute_macro(&self, id: &str) -> Result<ExecutionResult, EngineError> {
+        let macro_data = self.get_macro_by_id(id)?;
+        ActionExecutor::execute_manual(&macro_data)
+    }
+
+    /// Execute a macro as if it was triggered by typing (with trigger deletion).
+    pub fn execute_typed_trigger(
+        &self,
+        macro_data: &Macro,
+        trigger_length: usize,
+    ) -> Result<ExecutionResult, EngineError> {
+        ActionExecutor::execute_typed_trigger(macro_data, trigger_length)
+    }
+
+    /// Execute a macro as if it was triggered by an event (no trigger deletion).
+    pub fn execute_event_trigger(
+        &self,
+        macro_data: &Macro,
+    ) -> Result<ExecutionResult, EngineError> {
+        ActionExecutor::execute_event_trigger(macro_data)
     }
 
     // --- Private Helpers ---
