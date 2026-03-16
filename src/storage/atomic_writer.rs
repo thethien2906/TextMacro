@@ -98,16 +98,14 @@ fn write_and_sync(path: &Path, data: &[u8]) -> Result<(), StorageError> {
             path: path_str.clone(),
             source: e,
         })?;
-    file.flush()
-        .map_err(|e| StorageError::FileWriteError {
-            path: path_str.clone(),
-            source: e,
-        })?;
-    file.sync_all()
-        .map_err(|e| StorageError::FileWriteError {
-            path: path_str,
-            source: e,
-        })?;
+    file.flush().map_err(|e| StorageError::FileWriteError {
+        path: path_str.clone(),
+        source: e,
+    })?;
+    file.sync_all().map_err(|e| StorageError::FileWriteError {
+        path: path_str,
+        source: e,
+    })?;
     Ok(())
 }
 
@@ -132,7 +130,10 @@ mod tests {
         atomic_write(&target, data).unwrap();
 
         assert!(target.exists());
-        assert_eq!(fs::read_to_string(&target).unwrap(), "{\"hello\": \"world\"}");
+        assert_eq!(
+            fs::read_to_string(&target).unwrap(),
+            "{\"hello\": \"world\"}"
+        );
 
         // Cleanup
         let _ = fs::remove_file(&target);
@@ -192,7 +193,10 @@ mod tests {
 
         atomic_write(&target, b"data").unwrap();
 
-        assert!(!tmp.exists(), ".tmp file should be cleaned up after successful write");
+        assert!(
+            !tmp.exists(),
+            ".tmp file should be cleaned up after successful write"
+        );
 
         // Cleanup
         let _ = fs::remove_file(&target);

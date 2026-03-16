@@ -51,8 +51,8 @@ fn enforce_retention(backups_dir: &Path, stem: &str, keep_count: usize) -> Resul
     let prefix = format!("{}_", stem);
     let mut dated_files: Vec<(NaiveDate, PathBuf)> = Vec::new();
 
-    let entries = fs::read_dir(backups_dir)
-        .map_err(|e| format!("Cannot read backups dir: {}", e))?;
+    let entries =
+        fs::read_dir(backups_dir).map_err(|e| format!("Cannot read backups dir: {}", e))?;
 
     for entry in entries.flatten() {
         let path = entry.path();
@@ -221,11 +221,7 @@ mod tests {
         )
         .unwrap();
         // Newest but corrupt
-        fs::write(
-            backups.join("macros_2026-03-08.json"),
-            "NOT VALID JSON!!!",
-        )
-        .unwrap();
+        fs::write(backups.join("macros_2026-03-08.json"), "NOT VALID JSON!!!").unwrap();
 
         let result = find_newest_valid_backup(&dir);
         assert!(result.is_some());

@@ -37,7 +37,10 @@ fn data_dir_base() -> Result<PathBuf, StorageError> {
     #[cfg(target_os = "macos")]
     {
         if let Some(home) = home_dir() {
-            return Ok(home.join("Library").join("Application Support").join("TextMacro"));
+            return Ok(home
+                .join("Library")
+                .join("Application Support")
+                .join("TextMacro"));
         }
     }
 
@@ -99,7 +102,10 @@ mod tests {
     #[test]
     fn test_resolve_data_dir_returns_ok() {
         let result = resolve_data_dir();
-        assert!(result.is_ok(), "resolve_data_dir should succeed on any supported OS");
+        assert!(
+            result.is_ok(),
+            "resolve_data_dir should succeed on any supported OS"
+        );
         let path = result.unwrap();
         let path_str = path.to_string_lossy().to_lowercase();
         assert!(
@@ -112,9 +118,18 @@ mod tests {
     #[test]
     fn test_data_file_path() {
         let dir = PathBuf::from("/tmp/test_data");
-        assert_eq!(data_file(&dir, MACROS_FILE), PathBuf::from("/tmp/test_data/macros.json"));
-        assert_eq!(data_file(&dir, CONFIG_FILE), PathBuf::from("/tmp/test_data/config.json"));
-        assert_eq!(data_file(&dir, STATS_FILE), PathBuf::from("/tmp/test_data/stats.json"));
+        assert_eq!(
+            data_file(&dir, MACROS_FILE),
+            PathBuf::from("/tmp/test_data/macros.json")
+        );
+        assert_eq!(
+            data_file(&dir, CONFIG_FILE),
+            PathBuf::from("/tmp/test_data/config.json")
+        );
+        assert_eq!(
+            data_file(&dir, STATS_FILE),
+            PathBuf::from("/tmp/test_data/stats.json")
+        );
     }
 
     #[test]

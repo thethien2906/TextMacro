@@ -1,7 +1,7 @@
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use uuid::Uuid;
-use chrono::Utc;
 
 /// The central data object representing a user-defined macro.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -190,16 +190,34 @@ mod tests {
 
     #[test]
     fn test_macro_category_serialization() {
-        assert_eq!(serde_json::to_string(&MacroCategory::Text).unwrap(), "\"text\"");
-        assert_eq!(serde_json::to_string(&MacroCategory::Prompt).unwrap(), "\"prompt\"");
-        assert_eq!(serde_json::to_string(&MacroCategory::Event).unwrap(), "\"event\"");
+        assert_eq!(
+            serde_json::to_string(&MacroCategory::Text).unwrap(),
+            "\"text\""
+        );
+        assert_eq!(
+            serde_json::to_string(&MacroCategory::Prompt).unwrap(),
+            "\"prompt\""
+        );
+        assert_eq!(
+            serde_json::to_string(&MacroCategory::Event).unwrap(),
+            "\"event\""
+        );
     }
 
     #[test]
     fn test_macro_category_deserialization() {
-        assert_eq!(serde_json::from_str::<MacroCategory>("\"text\"").unwrap(), MacroCategory::Text);
-        assert_eq!(serde_json::from_str::<MacroCategory>("\"prompt\"").unwrap(), MacroCategory::Prompt);
-        assert_eq!(serde_json::from_str::<MacroCategory>("\"event\"").unwrap(), MacroCategory::Event);
+        assert_eq!(
+            serde_json::from_str::<MacroCategory>("\"text\"").unwrap(),
+            MacroCategory::Text
+        );
+        assert_eq!(
+            serde_json::from_str::<MacroCategory>("\"prompt\"").unwrap(),
+            MacroCategory::Prompt
+        );
+        assert_eq!(
+            serde_json::from_str::<MacroCategory>("\"event\"").unwrap(),
+            MacroCategory::Event
+        );
     }
 
     #[test]
@@ -210,18 +228,42 @@ mod tests {
 
     #[test]
     fn test_action_type_serialization() {
-        assert_eq!(serde_json::to_string(&ActionType::InsertText).unwrap(), "\"insert_text\"");
-        assert_eq!(serde_json::to_string(&ActionType::RunScript).unwrap(), "\"run_script\"");
-        assert_eq!(serde_json::to_string(&ActionType::OpenProgram).unwrap(), "\"open_program\"");
-        assert_eq!(serde_json::to_string(&ActionType::LoadPrompt).unwrap(), "\"load_prompt\"");
+        assert_eq!(
+            serde_json::to_string(&ActionType::InsertText).unwrap(),
+            "\"insert_text\""
+        );
+        assert_eq!(
+            serde_json::to_string(&ActionType::RunScript).unwrap(),
+            "\"run_script\""
+        );
+        assert_eq!(
+            serde_json::to_string(&ActionType::OpenProgram).unwrap(),
+            "\"open_program\""
+        );
+        assert_eq!(
+            serde_json::to_string(&ActionType::LoadPrompt).unwrap(),
+            "\"load_prompt\""
+        );
     }
 
     #[test]
     fn test_action_type_deserialization() {
-        assert_eq!(serde_json::from_str::<ActionType>("\"insert_text\"").unwrap(), ActionType::InsertText);
-        assert_eq!(serde_json::from_str::<ActionType>("\"run_script\"").unwrap(), ActionType::RunScript);
-        assert_eq!(serde_json::from_str::<ActionType>("\"open_program\"").unwrap(), ActionType::OpenProgram);
-        assert_eq!(serde_json::from_str::<ActionType>("\"load_prompt\"").unwrap(), ActionType::LoadPrompt);
+        assert_eq!(
+            serde_json::from_str::<ActionType>("\"insert_text\"").unwrap(),
+            ActionType::InsertText
+        );
+        assert_eq!(
+            serde_json::from_str::<ActionType>("\"run_script\"").unwrap(),
+            ActionType::RunScript
+        );
+        assert_eq!(
+            serde_json::from_str::<ActionType>("\"open_program\"").unwrap(),
+            ActionType::OpenProgram
+        );
+        assert_eq!(
+            serde_json::from_str::<ActionType>("\"load_prompt\"").unwrap(),
+            ActionType::LoadPrompt
+        );
     }
 
     #[test]
@@ -232,20 +274,50 @@ mod tests {
 
     #[test]
     fn test_event_type_serialization() {
-        assert_eq!(serde_json::to_string(&EventType::KeyboardShortcut).unwrap(), "\"keyboard_shortcut\"");
-        assert_eq!(serde_json::to_string(&EventType::SystemStartup).unwrap(), "\"system_startup\"");
-        assert_eq!(serde_json::to_string(&EventType::ApplicationLaunch).unwrap(), "\"application_launch\"");
-        assert_eq!(serde_json::to_string(&EventType::Timer).unwrap(), "\"timer\"");
-        assert_eq!(serde_json::to_string(&EventType::FileChange).unwrap(), "\"file_change\"");
+        assert_eq!(
+            serde_json::to_string(&EventType::KeyboardShortcut).unwrap(),
+            "\"keyboard_shortcut\""
+        );
+        assert_eq!(
+            serde_json::to_string(&EventType::SystemStartup).unwrap(),
+            "\"system_startup\""
+        );
+        assert_eq!(
+            serde_json::to_string(&EventType::ApplicationLaunch).unwrap(),
+            "\"application_launch\""
+        );
+        assert_eq!(
+            serde_json::to_string(&EventType::Timer).unwrap(),
+            "\"timer\""
+        );
+        assert_eq!(
+            serde_json::to_string(&EventType::FileChange).unwrap(),
+            "\"file_change\""
+        );
     }
 
     #[test]
     fn test_event_type_deserialization() {
-        assert_eq!(serde_json::from_str::<EventType>("\"keyboard_shortcut\"").unwrap(), EventType::KeyboardShortcut);
-        assert_eq!(serde_json::from_str::<EventType>("\"system_startup\"").unwrap(), EventType::SystemStartup);
-        assert_eq!(serde_json::from_str::<EventType>("\"application_launch\"").unwrap(), EventType::ApplicationLaunch);
-        assert_eq!(serde_json::from_str::<EventType>("\"timer\"").unwrap(), EventType::Timer);
-        assert_eq!(serde_json::from_str::<EventType>("\"file_change\"").unwrap(), EventType::FileChange);
+        assert_eq!(
+            serde_json::from_str::<EventType>("\"keyboard_shortcut\"").unwrap(),
+            EventType::KeyboardShortcut
+        );
+        assert_eq!(
+            serde_json::from_str::<EventType>("\"system_startup\"").unwrap(),
+            EventType::SystemStartup
+        );
+        assert_eq!(
+            serde_json::from_str::<EventType>("\"application_launch\"").unwrap(),
+            EventType::ApplicationLaunch
+        );
+        assert_eq!(
+            serde_json::from_str::<EventType>("\"timer\"").unwrap(),
+            EventType::Timer
+        );
+        assert_eq!(
+            serde_json::from_str::<EventType>("\"file_change\"").unwrap(),
+            EventType::FileChange
+        );
     }
 
     #[test]

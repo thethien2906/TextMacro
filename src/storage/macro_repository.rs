@@ -103,10 +103,7 @@ impl StorageManager {
         if !macros_path.exists() {
             let content = json_loader::default_macros_json();
             if let Err(e) = fs::write(&macros_path, content) {
-                warnings.push(format!(
-                    "Failed to create default macros.json: {}",
-                    e
-                ));
+                warnings.push(format!("Failed to create default macros.json: {}", e));
             }
         }
 
@@ -114,10 +111,7 @@ impl StorageManager {
         if !config_path.exists() {
             let content = json_loader::default_config_json();
             if let Err(e) = fs::write(&config_path, content) {
-                warnings.push(format!(
-                    "Failed to create default config.json: {}",
-                    e
-                ));
+                warnings.push(format!("Failed to create default config.json: {}", e));
             }
         }
 
@@ -262,9 +256,7 @@ mod tests {
     use super::*;
 
     fn test_manager(name: &str) -> StorageManager {
-        let dir = std::env::temp_dir()
-            .join("textmacro_mgr_tests")
-            .join(name);
+        let dir = std::env::temp_dir().join("textmacro_mgr_tests").join(name);
         let _ = fs::remove_dir_all(&dir);
         StorageManager::with_dir(dir)
     }
@@ -350,11 +342,8 @@ mod tests {
         // .bak should still have previous version (from the atomic write)
         let (loaded, warnings) = mgr.load_macros();
         // Recovery should have found something (either bak or empty)
-        assert!(
-            !warnings.is_empty(),
-            "Should have warnings about recovery"
-        );
-        // The bak was created by the save, so it may contain the version before /saved 
+        assert!(!warnings.is_empty(), "Should have warnings about recovery");
+        // The bak was created by the save, so it may contain the version before /saved
         // (which is the default empty macros). Let's just verify we got a valid result.
     }
 
@@ -367,10 +356,7 @@ mod tests {
         fs::write(mgr.macros_path(), "CORRUPT").unwrap();
 
         let (macros, warnings) = mgr.load_macros();
-        assert!(
-            !warnings.is_empty(),
-            "Should have recovery warnings"
-        );
+        assert!(!warnings.is_empty(), "Should have recovery warnings");
         // Should end up with empty macros
         // (since the .bak from init is the default empty, or no .bak at all)
     }

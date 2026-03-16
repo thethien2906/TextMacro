@@ -1,6 +1,6 @@
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use chrono::Utc;
 
 /// Represents a notification message displayed to the user.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -74,18 +74,42 @@ mod tests {
 
     #[test]
     fn test_notification_type_serialization() {
-        assert_eq!(serde_json::to_string(&NotificationType::Success).unwrap(), "\"success\"");
-        assert_eq!(serde_json::to_string(&NotificationType::Error).unwrap(), "\"error\"");
-        assert_eq!(serde_json::to_string(&NotificationType::Warning).unwrap(), "\"warning\"");
-        assert_eq!(serde_json::to_string(&NotificationType::Info).unwrap(), "\"info\"");
+        assert_eq!(
+            serde_json::to_string(&NotificationType::Success).unwrap(),
+            "\"success\""
+        );
+        assert_eq!(
+            serde_json::to_string(&NotificationType::Error).unwrap(),
+            "\"error\""
+        );
+        assert_eq!(
+            serde_json::to_string(&NotificationType::Warning).unwrap(),
+            "\"warning\""
+        );
+        assert_eq!(
+            serde_json::to_string(&NotificationType::Info).unwrap(),
+            "\"info\""
+        );
     }
 
     #[test]
     fn test_notification_type_deserialization() {
-        assert_eq!(serde_json::from_str::<NotificationType>("\"success\"").unwrap(), NotificationType::Success);
-        assert_eq!(serde_json::from_str::<NotificationType>("\"error\"").unwrap(), NotificationType::Error);
-        assert_eq!(serde_json::from_str::<NotificationType>("\"warning\"").unwrap(), NotificationType::Warning);
-        assert_eq!(serde_json::from_str::<NotificationType>("\"info\"").unwrap(), NotificationType::Info);
+        assert_eq!(
+            serde_json::from_str::<NotificationType>("\"success\"").unwrap(),
+            NotificationType::Success
+        );
+        assert_eq!(
+            serde_json::from_str::<NotificationType>("\"error\"").unwrap(),
+            NotificationType::Error
+        );
+        assert_eq!(
+            serde_json::from_str::<NotificationType>("\"warning\"").unwrap(),
+            NotificationType::Warning
+        );
+        assert_eq!(
+            serde_json::from_str::<NotificationType>("\"info\"").unwrap(),
+            NotificationType::Info
+        );
     }
 
     #[test]

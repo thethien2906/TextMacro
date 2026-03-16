@@ -7,38 +7,19 @@ use std::io;
 #[derive(Debug)]
 pub enum StorageError {
     /// Cannot create the data directory.
-    DirectoryCreateFail {
-        path: String,
-        source: io::Error,
-    },
+    DirectoryCreateFail { path: String, source: io::Error },
     /// Expected file does not exist.
-    FileNotFound {
-        path: String,
-    },
+    FileNotFound { path: String },
     /// Cannot read file (permissions, I/O).
-    FileReadError {
-        path: String,
-        source: io::Error,
-    },
+    FileReadError { path: String, source: io::Error },
     /// Cannot write file (disk full, permissions).
-    FileWriteError {
-        path: String,
-        source: io::Error,
-    },
+    FileWriteError { path: String, source: io::Error },
     /// JSON is malformed.
-    ParseError {
-        path: String,
-        message: String,
-    },
+    ParseError { path: String, message: String },
     /// Cannot serialize data to JSON.
-    SerializationError {
-        message: String,
-    },
+    SerializationError { message: String },
     /// Backup file is also invalid during recovery.
-    BackupRestoreError {
-        path: String,
-        message: String,
-    },
+    BackupRestoreError { path: String, message: String },
 }
 
 impl fmt::Display for StorageError {

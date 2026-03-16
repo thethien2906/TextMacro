@@ -70,11 +70,10 @@ pub fn parse_macros_from_str(
     content: &str,
     source_path: &str,
 ) -> Result<(Vec<Macro>, Vec<String>), StorageError> {
-    let file: MacrosFile =
-        serde_json::from_str(content).map_err(|e| StorageError::ParseError {
-            path: source_path.into(),
-            message: e.to_string(),
-        })?;
+    let file: MacrosFile = serde_json::from_str(content).map_err(|e| StorageError::ParseError {
+        path: source_path.into(),
+        message: e.to_string(),
+    })?;
 
     // Placeholder for future migration
     let _version = file.version;
@@ -88,11 +87,7 @@ pub fn parse_macros_from_str(
         let mut m: Macro = match serde_json::from_value(raw_value.clone()) {
             Ok(m) => m,
             Err(e) => {
-                warnings.push(format!(
-                    "Skipped invalid macro at index {}: {}",
-                    i,
-                    e
-                ));
+                warnings.push(format!("Skipped invalid macro at index {}: {}", i, e));
                 continue;
             }
         };
@@ -135,18 +130,21 @@ pub fn save_macros(path: &Path, macros: &[Macro], data_dir: &Path) -> Result<(),
     }
 
     let out = Out { version: 1, macros };
-    let json = serde_json::to_string_pretty(&out).map_err(|e| StorageError::SerializationError {
-        message: e.to_string(),
-    })?;
+    let json =
+        serde_json::to_string_pretty(&out).map_err(|e| StorageError::SerializationError {
+            message: e.to_string(),
+        })?;
 
     // Daily backup (best-effort)
     if let Err(e) = backup::create_daily_backup(data_dir, path) {
         eprintln!("[WARN] [storage] Daily backup failed: {}", e);
     }
 
-    atomic_writer::atomic_write(path, json.as_bytes()).map_err(|_| StorageError::FileWriteError {
-        path: path_str.clone(),
-        source: std::io::Error::new(std::io::ErrorKind::Other, "Atomic write failed"),
+    atomic_writer::atomic_write(path, json.as_bytes()).map_err(|_| {
+        StorageError::FileWriteError {
+            path: path_str.clone(),
+            source: std::io::Error::new(std::io::ErrorKind::Other, "Atomic write failed"),
+        }
     })?;
 
     Ok(())
@@ -204,13 +202,16 @@ pub fn save_config(path: &Path, config: &Config) -> Result<(), StorageError> {
     }
 
     let out = Out { version: 1, config };
-    let json = serde_json::to_string_pretty(&out).map_err(|e| StorageError::SerializationError {
-        message: e.to_string(),
-    })?;
+    let json =
+        serde_json::to_string_pretty(&out).map_err(|e| StorageError::SerializationError {
+            message: e.to_string(),
+        })?;
 
-    atomic_writer::atomic_write(path, json.as_bytes()).map_err(|_| StorageError::FileWriteError {
-        path: path_str,
-        source: std::io::Error::new(std::io::ErrorKind::Other, "Atomic write failed"),
+    atomic_writer::atomic_write(path, json.as_bytes()).map_err(|_| {
+        StorageError::FileWriteError {
+            path: path_str,
+            source: std::io::Error::new(std::io::ErrorKind::Other, "Atomic write failed"),
+        }
     })?;
 
     Ok(())
@@ -263,13 +264,16 @@ pub fn save_stats(path: &Path, stats: &[MacroStats]) -> Result<(), StorageError>
     }
 
     let out = Out { version: 1, stats };
-    let json = serde_json::to_string_pretty(&out).map_err(|e| StorageError::SerializationError {
-        message: e.to_string(),
-    })?;
+    let json =
+        serde_json::to_string_pretty(&out).map_err(|e| StorageError::SerializationError {
+            message: e.to_string(),
+        })?;
 
-    atomic_writer::atomic_write(path, json.as_bytes()).map_err(|_| StorageError::FileWriteError {
-        path: path_str,
-        source: std::io::Error::new(std::io::ErrorKind::Other, "Atomic write failed"),
+    atomic_writer::atomic_write(path, json.as_bytes()).map_err(|_| {
+        StorageError::FileWriteError {
+            path: path_str,
+            source: std::io::Error::new(std::io::ErrorKind::Other, "Atomic write failed"),
+        }
     })?;
 
     Ok(())
@@ -322,13 +326,11 @@ pub fn migrate(_data: serde_json::Value, _from_version: u32) -> serde_json::Valu
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap;
     use crate::models::macro_model::{ActionType, EventTrigger, EventType, MacroCategory};
+    use std::collections::HashMap;
 
     fn test_dir(name: &str) -> std::path::PathBuf {
-        let dir = std::env::temp_dir()
-            .join("textmacro_json_tests")
-            .join(name);
+        let dir = std::env::temp_dir().join("textmacro_json_tests").join(name);
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         fs::create_dir_all(dir.join("backups")).unwrap();
@@ -452,7 +454,9 @@ mod tests {
         assert_ne!(macros[0].id, "NOT-A-VALID-UUID");
         // The new ID should be a valid UUID
         assert!(Uuid::parse_str(&macros[0].id).is_ok());
-        assert!(warnings.iter().any(|w| w.contains("Regenerated invalid UUID")));
+        assert!(warnings
+            .iter()
+            .any(|w| w.contains("Regenerated invalid UUID")));
     }
 
     #[test]
@@ -609,13 +613,11 @@ mod tests {
     fn test_save_stats_roundtrip() {
         let dir = test_dir("stats_roundtrip");
         let path = dir.join("stats.json");
-        let stats = vec![
-            MacroStats {
-                macro_id: "test-id".into(),
-                trigger_count: 42,
-                last_triggered: Some("2026-03-09T14:20:00Z".into()),
-            },
-        ];
+        let stats = vec![MacroStats {
+            macro_id: "test-id".into(),
+            trigger_count: 42,
+            last_triggered: Some("2026-03-09T14:20:00Z".into()),
+        }];
 
         save_stats(&path, &stats).unwrap();
         let (loaded, warnings) = load_stats(&path);

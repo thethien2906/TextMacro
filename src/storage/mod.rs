@@ -8,9 +8,9 @@
 //! - JSON load/save for macros, config, and stats (`json_loader`)
 //! - High-level `StorageManager` orchestrating all operations (`macro_repository`)
 
-pub mod error;
-pub mod paths;
 pub mod atomic_writer;
 pub mod backup;
+pub mod error;
 pub mod json_loader;
 pub mod macro_repository;
+pub mod paths;

@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
-use super::macro_model::Macro;
 use super::config::Config;
+use super::macro_model::Macro;
 use super::stats::MacroStats;
 
 /// Message types sent from engine to UI.
@@ -93,10 +93,7 @@ pub enum EngineEvent {
         timestamp: String,
     },
     /// A macro execution completed: (macro_id, success).
-    MacroExecutionComplete {
-        macro_id: String,
-        success: bool,
-    },
+    MacroExecutionComplete { macro_id: String, success: bool },
     /// Engine has started.
     EngineStarted,
     /// Engine has stopped.
@@ -110,7 +107,7 @@ pub enum EngineEvent {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::macro_model::{Macro, MacroCategory, ActionType};
+    use crate::models::macro_model::{ActionType, Macro, MacroCategory};
 
     #[test]
     fn test_execution_result_roundtrip() {

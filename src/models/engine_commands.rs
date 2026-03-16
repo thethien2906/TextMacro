@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
-use super::macro_model::{MacroCategory, EventTrigger, ActionType};
 use super::config::Config;
+use super::macro_model::{ActionType, EventTrigger, MacroCategory};
 
 /// Message types sent from UI to engine.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -145,10 +145,7 @@ mod tests {
 
     #[test]
     fn test_engine_command_no_payload_variants_roundtrip() {
-        let commands = vec![
-            EngineCommand::GetConfig,
-            EngineCommand::ReloadMacros,
-        ];
+        let commands = vec![EngineCommand::GetConfig, EngineCommand::ReloadMacros];
 
         for cmd in commands {
             let json = serde_json::to_string(&cmd).unwrap();
