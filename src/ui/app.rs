@@ -11,9 +11,11 @@ use iced::keyboard::key::Named;
 use iced::Event as IcedEvent;
 
 use crate::models::macro_model::{Macro, MacroCategory, ActionType};
+use crate::models::config::Config;
 use crate::storage::macro_repository::StorageManager;
 use crate::ui::macro_list;
 use crate::ui::macro_editor;
+use crate::ui::settings_panel;
 use iced::widget::text_editor;
 pub const BACKGROUND: Color = Color::from_rgb(0.059, 0.067, 0.082); // #0F1115
 pub const PANEL: Color = Color::from_rgb(0.086, 0.102, 0.13); // #161A21
@@ -178,6 +180,9 @@ pub struct TextMacroApp {
     editor_state: EditorState,
     pending_navigation: Option<Box<Message>>,
     show_delete_dialog: bool,
+    config: Config,
+    config_validation_errors: std::collections::HashMap<String, String>,
+    is_recording_shortcut: bool,
 }
 
 #[derive(Debug)]
@@ -217,7 +222,7 @@ pub enum Message {
     MaximizeClicked,
     CloseClicked,
     WindowResized(u32, u32),
-    KeyPressed(keyboard::Key),
+    KeyPressed(keyboard::Key, keyboard::Modifiers),
     SearchQueryChanged(String),
     ClearSearch,
     SelectMacro(String),
@@ -232,6 +237,18 @@ pub enum Message {
     CancelDelete,
     ConfirmDiscard,
     CancelDiscard,
+    // Settings
+    ToggleRunOnStartup(bool),
+    ToggleBackgroundService(bool),
+    TriggerPrefixChanged(String),
+    TriggerPrefixSubmit,
+    ToggleEditorFontMonospace(bool),
+    TogglePreserveFormatting(bool),
+    ToggleMarkdownSupport(bool),
+    ThemeSelected(String),
+    UIDensitySelected(String),
+    StartShortcutRecording,
+    CancelShortcutRecording,
 }
 
 const SIDEBAR_ITEMS: &[(&str, &str)] = &[
@@ -251,6 +268,7 @@ impl Application for TextMacroApp {
         let storage = StorageManager::new().expect("Failed to initialize storage");
         let _ = storage.initialize(); // Ignore warnings
         let (macros, _) = storage.load_macros();
+        let (config, _) = storage.load_config();
         
         (
             Self {
@@ -265,6 +283,9 @@ impl Application for TextMacroApp {
                 editor_state: EditorState::default(),
                 pending_navigation: None,
                 show_delete_dialog: false,
+                config,
+                config_validation_errors: std::collections::HashMap::new(),
+                is_recording_shortcut: false,
             },
             Command::none(),
         )
@@ -274,14 +295,21 @@ impl Application for TextMacroApp {
         String::from("TextMacro")
     }
 
+    fn theme(&self) -> Theme {
+        match self.config.theme.as_str() {
+            "light" => Theme::Light,
+            _ => Theme::Dark,
+        }
+    }
+
     fn subscription(&self) -> Subscription<Message> {
         Subscription::batch([
             iced::event::listen_with(|event, _status| match event {
                 IcedEvent::Window(_, WindowEvent::Resized { width: w, height: h }) => {
                     Some(Message::WindowResized(w, h))
                 }
-                IcedEvent::Keyboard(keyboard::Event::KeyPressed { key, .. }) => {
-                    Some(Message::KeyPressed(key))
+                IcedEvent::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. }) => {
+                    Some(Message::KeyPressed(key, modifiers))
                 }
                 _ => None,
             }),
@@ -312,7 +340,44 @@ impl Application for TextMacroApp {
                 self.window_width = w as f32;
                 Command::none()
             }
-            Message::KeyPressed(key) => {
+            Message::KeyPressed(key, modifiers) => {
+                if self.is_recording_shortcut {
+                    if matches!(key.as_ref(), keyboard::Key::Named(Named::Escape)) {
+                        self.is_recording_shortcut = false;
+                        return Command::none();
+                    }
+                    if !modifiers.is_empty() {
+                        let mut combo = String::new();
+                        if modifiers.control() { combo.push_str("Ctrl+"); }
+                        if modifiers.alt() { combo.push_str("Alt+"); }
+                        if modifiers.shift() { combo.push_str("Shift+"); }
+                        if modifiers.logo() { combo.push_str("Meta+"); }
+                        
+                        let key_str = match key.as_ref() {
+                            keyboard::Key::Named(Named::Escape) => Some("Esc"),
+                            keyboard::Key::Named(Named::Enter) => Some("Enter"),
+                            keyboard::Key::Named(Named::Space) => Some("Space"),
+                            keyboard::Key::Character(s) => Some(s.as_ref()),
+                            _ => None,
+                        };
+                        
+                        if let Some(s) = key_str {
+                            let shortcut = format!("{}{}", combo, s.to_uppercase());
+                            self.config.command_palette_shortcut = shortcut;
+                            self.is_recording_shortcut = false;
+                            self.config_validation_errors.remove("command_palette_shortcut");
+                            let _ = self._storage.save_config(&self.config);
+                        }
+                    } else if matches!(key.as_ref(), keyboard::Key::Character(_)) || matches!(key.as_ref(), keyboard::Key::Named(_)) {
+                        // User pressed a key without modifier
+                        self.config_validation_errors.insert(
+                            "command_palette_shortcut".to_string(), 
+                            "Must include Ctrl, Alt, or Shift".to_string()
+                        );
+                    }
+                    return Command::none();
+                }
+
                 match key.as_ref() {
                     keyboard::Key::Named(Named::ArrowUp) => {
                         if window::Id::MAIN == window::Id::MAIN { // Dummy check just an excuse for a block, but we want to focus center if selected macro exists.
@@ -564,6 +629,63 @@ impl Application for TextMacroApp {
                 self.pending_navigation = None;
                 Command::none()
             }
+            // Settings Implementations
+            Message::ToggleRunOnStartup(b) => {
+                self.config.run_on_startup = b;
+                let _ = self._storage.save_config(&self.config);
+                Command::none()
+            }
+            Message::ToggleBackgroundService(b) => {
+                self.config.enable_background_service = b;
+                let _ = self._storage.save_config(&self.config);
+                Command::none()
+            }
+            Message::TriggerPrefixChanged(val) => {
+                self.config.trigger_prefix = val;
+                if self.config.trigger_prefix.is_empty() {
+                    self.config_validation_errors.insert("trigger_prefix".into(), "Trigger prefix is required".into());
+                } else {
+                    self.config_validation_errors.remove("trigger_prefix");
+                    let _ = self._storage.save_config(&self.config);
+                }
+                Command::none()
+            }
+            Message::TriggerPrefixSubmit => {
+                Command::none()
+            }
+            Message::ToggleEditorFontMonospace(b) => {
+                self.config.editor_font_monospace = b;
+                let _ = self._storage.save_config(&self.config);
+                Command::none()
+            }
+            Message::TogglePreserveFormatting(b) => {
+                self.config.preserve_formatting = b;
+                let _ = self._storage.save_config(&self.config);
+                Command::none()
+            }
+            Message::ToggleMarkdownSupport(b) => {
+                self.config.markdown_support = b;
+                let _ = self._storage.save_config(&self.config);
+                Command::none()
+            }
+            Message::ThemeSelected(val) => {
+                self.config.theme = val;
+                let _ = self._storage.save_config(&self.config);
+                Command::none()
+            }
+            Message::UIDensitySelected(val) => {
+                self.config.ui_density = val;
+                let _ = self._storage.save_config(&self.config);
+                Command::none()
+            }
+            Message::StartShortcutRecording => {
+                self.is_recording_shortcut = true;
+                Command::none()
+            }
+            Message::CancelShortcutRecording => {
+                self.is_recording_shortcut = false;
+                Command::none()
+            }
         }
     }
 
@@ -668,67 +790,72 @@ impl Application for TextMacroApp {
             _ => MacroCategory::Text, // Default to Text if settings/other
         };
 
-        let macro_list_view = if self.active_sidebar < 3 {
-            macro_list::view(
+        let content = if self.active_sidebar == 3 {
+            let settings_view = settings_panel::view(
+                &self.config,
+                &self.config_validation_errors,
+                self.is_recording_shortcut,
+            );
+            
+            let settings_container = container(settings_view)
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .style(theme::Container::Custom(Box::new(CenterPanelStyle)));
+                
+            row![sidebar, settings_container].height(Length::Fill)
+        } else {
+            let macro_list_view = macro_list::view(
                 &self.macros,
                 active_category,
                 &self.search_query,
                 self.selected_macro_id.as_deref(),
-            )
-        } else {
-            // Settings Panel
-            container(text("Settings Panel").style(theme::Text::Color(TEXT_SECONDARY)))
-                .width(Length::Fill)
+            );
+
+            let center_panel = container(macro_list_view)
+                .width(Length::FillPortion(35))
                 .height(Length::Fill)
-                .center_x()
-                .center_y()
-                .into()
+                .style(theme::Container::Custom(Box::new(CenterPanelStyle)));
+
+            let right_panel: Element<'_, Message> = if is_hidden_right {
+                Space::new(0.0, 0.0).into()
+            } else if self.pending_navigation.is_some() {
+                let dialog_box = column![
+                    text("Unsaved Changes").size(20).style(theme::Text::Color(TEXT_PRIMARY)),
+                    text("You have unsaved changes. Do you want to discard them?").size(14).style(theme::Text::Color(TEXT_SECONDARY)),
+                    Space::new(0.0, 20.0),
+                    row![
+                        horizontal_space().width(Length::Fill),
+                        button(text("Cancel").horizontal_alignment(alignment::Horizontal::Center).style(theme::Text::Color(TEXT_PRIMARY)))
+                            .padding(10)
+                            .width(Length::Fixed(100.0))
+                            .style(theme::Button::custom(crate::ui::macro_list::ClearBtnStyle))
+                            .on_press(Message::CancelDiscard),
+                        Space::new(10.0, 0.0),
+                        button(text("Discard").horizontal_alignment(alignment::Horizontal::Center).style(theme::Text::Color(ERROR)))
+                            .padding(10)
+                            .width(Length::Fixed(100.0))
+                            .style(theme::Button::custom(crate::ui::macro_editor::DangerButtonStyle))
+                            .on_press(Message::ConfirmDiscard),
+                    ].align_items(alignment::Alignment::Center)
+                ].padding(24);
+                
+                container(dialog_box)
+                    .width(Length::FillPortion(65))
+                    .height(Length::Fill)
+                    .center_x()
+                    .center_y()
+                    .style(theme::Container::Custom(Box::new(CenterPanelStyle)))
+                    .into()
+            } else {
+                container(macro_editor::view(&self.editor_state, self.show_delete_dialog, self.config.editor_font_monospace))
+                    .width(Length::FillPortion(65))
+                    .height(Length::Fill)
+                    .style(theme::Container::Custom(Box::new(CenterPanelStyle)))
+                    .into()
+            };
+
+            row![sidebar, center_panel, right_panel].height(Length::Fill)
         };
-
-        let center_panel = container(macro_list_view)
-            .width(Length::FillPortion(35))
-            .height(Length::Fill)
-            .style(theme::Container::Custom(Box::new(CenterPanelStyle)));
-
-        let right_panel: Element<'_, Message> = if is_hidden_right {
-            Space::new(0.0, 0.0).into()
-        } else if self.pending_navigation.is_some() {
-            let dialog_box = column![
-                text("Unsaved Changes").size(20).style(theme::Text::Color(TEXT_PRIMARY)),
-                text("You have unsaved changes. Do you want to discard them?").size(14).style(theme::Text::Color(TEXT_SECONDARY)),
-                Space::new(0.0, 20.0),
-                row![
-                    horizontal_space().width(Length::Fill),
-                    button(text("Cancel").horizontal_alignment(alignment::Horizontal::Center).style(theme::Text::Color(TEXT_PRIMARY)))
-                        .padding(10)
-                        .width(Length::Fixed(100.0))
-                        .style(theme::Button::custom(crate::ui::macro_list::ClearBtnStyle))
-                        .on_press(Message::CancelDiscard),
-                    Space::new(10.0, 0.0),
-                    button(text("Discard").horizontal_alignment(alignment::Horizontal::Center).style(theme::Text::Color(ERROR)))
-                        .padding(10)
-                        .width(Length::Fixed(100.0))
-                        .style(theme::Button::custom(crate::ui::macro_editor::DangerButtonStyle))
-                        .on_press(Message::ConfirmDiscard),
-                ].align_items(alignment::Alignment::Center)
-            ].padding(24);
-            
-            container(dialog_box)
-                .width(Length::FillPortion(65))
-                .height(Length::Fill)
-                .center_x()
-                .center_y()
-                .style(theme::Container::Custom(Box::new(CenterPanelStyle)))
-                .into()
-        } else {
-            container(macro_editor::view(&self.editor_state, self.show_delete_dialog))
-                .width(Length::FillPortion(65))
-                .height(Length::Fill)
-                .style(theme::Container::Custom(Box::new(CenterPanelStyle)))
-                .into()
-        };
-
-        let content = row![sidebar, center_panel, right_panel].height(Length::Fill);
         
         container(column![draggble_title_bar, content])
             .style(theme::Container::Custom(Box::new(MainContainerStyle)))

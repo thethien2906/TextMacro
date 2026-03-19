@@ -181,7 +181,7 @@ impl button::StyleSheet for DangerButtonStyle {
     }
 }
 
-pub fn view<'a>(state: &'a EditorState, show_delete_dialog: bool) -> Element<'a, Message> {
+pub fn view<'a>(state: &'a EditorState, show_delete_dialog: bool, editor_font_monospace: bool) -> Element<'a, Message> {
     if !state.is_active {
         return container(
             text("Select a macro to edit or create a new one")
@@ -240,6 +240,7 @@ pub fn view<'a>(state: &'a EditorState, show_delete_dialog: bool) -> Element<'a,
     let content_editor = text_editor(&state.content)
         .on_action(Message::EditorContentAction)
         .height(Length::FillPortion(1))
+        .font(if editor_font_monospace { iced::Font::MONOSPACE } else { iced::Font::DEFAULT })
         .style(theme::TextEditor::Custom(Box::new(ContentEditorStyle { is_invalid: is_content_invalid })));
         
     let mut content_col = column![content_label, content_editor].spacing(8).height(Length::FillPortion(1));
