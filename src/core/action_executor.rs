@@ -116,8 +116,22 @@ impl ActionExecutor {
 
     /// Execute a shell script with timeout.
     fn execute_script(macro_id: &str, script: &str) -> Result<ExecutionResult, EngineError> {
-        let child = Command::new("cmd.exe")
-            .args(["/C", script])
+        let mut command = if cfg!(target_os = "windows") {
+            let mut c = Command::new("cmd.exe");
+            c.args(["/C", script]);
+            #[cfg(target_os = "windows")]
+            {
+                use std::os::windows::process::CommandExt;
+                c.creation_flags(0x08000000); // CREATE_NO_WINDOW
+            }
+            c
+        } else {
+            let mut c = Command::new("sh");
+            c.args(["-c", script]);
+            c
+        };
+
+        let child = command
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .spawn();
@@ -181,8 +195,23 @@ impl ActionExecutor {
 
     /// Launch an external program (detached, non-blocking).
     fn execute_program(macro_id: &str, program: &str) -> Result<ExecutionResult, EngineError> {
-        let result = Command::new("cmd.exe")
-            .args(["/C", "start", "", program])
+        let mut command = if cfg!(target_os = "windows") {
+            let mut c = Command::new("cmd.exe");
+            c.args(["/C", "start", "", program]);
+            #[cfg(target_os = "windows")]
+            {
+                use std::os::windows::process::CommandExt;
+                c.creation_flags(0x08000000); // CREATE_NO_WINDOW
+            }
+            c
+        } else {
+            let app = if cfg!(target_os = "macos") { "open" } else { "xdg-open" };
+            let mut c = Command::new(app);
+            c.arg(program);
+            c
+        };
+
+        let result = command
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .spawn();
