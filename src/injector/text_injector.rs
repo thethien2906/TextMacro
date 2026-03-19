@@ -117,9 +117,15 @@ impl TextInjector {
 
         delay(POST_CLIPBOARD_SET_DELAY_MS);
 
-        // Simulate Ctrl+V
-        simulate_key(&EventType::KeyPress(Key::ControlLeft)).map_err(|e| {
-            InjectorError::SimulationFailed(format!("Ctrl press: {:?}", e))
+        // Simulate Ctrl+V (or Cmd+V on macOS)
+        let modifier = if cfg!(target_os = "macos") {
+            Key::MetaLeft
+        } else {
+            Key::ControlLeft
+        };
+
+        simulate_key(&EventType::KeyPress(modifier)).map_err(|e| {
+            InjectorError::SimulationFailed(format!("Modifier press: {:?}", e))
         })?;
         simulate_key(&EventType::KeyPress(Key::KeyV)).map_err(|e| {
             InjectorError::SimulationFailed(format!("V press: {:?}", e))
@@ -127,8 +133,8 @@ impl TextInjector {
         simulate_key(&EventType::KeyRelease(Key::KeyV)).map_err(|e| {
             InjectorError::SimulationFailed(format!("V release: {:?}", e))
         })?;
-        simulate_key(&EventType::KeyRelease(Key::ControlLeft)).map_err(|e| {
-            InjectorError::SimulationFailed(format!("Ctrl release: {:?}", e))
+        simulate_key(&EventType::KeyRelease(modifier)).map_err(|e| {
+            InjectorError::SimulationFailed(format!("Modifier release: {:?}", e))
         })?;
 
         Ok(())
