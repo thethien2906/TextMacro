@@ -8,6 +8,6 @@ pub mod models;
 pub mod storage;
 pub mod ui;
 
-fn main() {
-    println!("TextMacro v0.1.0");
+fn main() -> iced::Result {
+    ui::app::run()
 }
