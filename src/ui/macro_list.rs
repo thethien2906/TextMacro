@@ -175,7 +175,7 @@ impl container::StyleSheet for RadiusBoxStyle {
     }
 }
 
-struct ClearBtnStyle;
+pub struct ClearBtnStyle;
 impl button::StyleSheet for ClearBtnStyle {
     type Style = Theme;
     fn active(&self, _style: &Self::Style) -> button::Appearance {
