@@ -3,13 +3,16 @@ use iced::widget::{
 };
 use iced::{
     alignment, executor, theme, window, Application, Background, Border, Color, Command, Element,
-    Event, Font, Length, Settings, Size, Subscription, Theme,
+    Font, Length, Settings, Size, Subscription, Theme,
 };
 use iced::window::Event as WindowEvent;
 use iced::keyboard;
 use iced::keyboard::key::Named;
 use iced::Event as IcedEvent;
 
+use crate::models::macro_model::{Macro, MacroCategory};
+use crate::storage::macro_repository::StorageManager;
+use crate::ui::macro_list;
 // Design tokens
 pub const BACKGROUND: Color = Color::from_rgb(0.059, 0.067, 0.082); // #0F1115
 pub const PANEL: Color = Color::from_rgb(0.086, 0.102, 0.13); // #161A21
@@ -167,6 +170,10 @@ pub struct TextMacroApp {
     focused_sidebar: Option<usize>,
     window_maximized: bool,
     window_width: f32,
+    macros: Vec<Macro>,
+    search_query: String,
+    selected_macro_id: Option<String>,
+    _storage: StorageManager,
 }
 
 #[derive(Debug, Clone)]
@@ -178,6 +185,10 @@ pub enum Message {
     CloseClicked,
     WindowResized(u32, u32),
     KeyPressed(keyboard::Key),
+    SearchQueryChanged(String),
+    ClearSearch,
+    SelectMacro(String),
+    NewMacroClick,
 }
 
 const SIDEBAR_ITEMS: &[(&str, &str)] = &[
@@ -194,12 +205,20 @@ impl Application for TextMacroApp {
     type Flags = ();
 
     fn new(_flags: ()) -> (Self, Command<Message>) {
+        let storage = StorageManager::new().expect("Failed to initialize storage");
+        let _ = storage.initialize(); // Ignore warnings
+        let (macros, _) = storage.load_macros();
+        
         (
             Self {
                 active_sidebar: 0,
                 focused_sidebar: None,
                 window_maximized: false,
                 window_width: 1200.0,
+                macros,
+                search_query: String::new(),
+                selected_macro_id: None,
+                _storage: storage,
             },
             Command::none(),
         )
@@ -227,6 +246,8 @@ impl Application for TextMacroApp {
         match message {
             Message::SidebarSelected(idx) => {
                 self.active_sidebar = idx;
+                self.search_query.clear();
+                self.selected_macro_id = None;
                 Command::none()
             }
             Message::TitleBarDragged => window::drag(window::Id::MAIN),
@@ -243,15 +264,52 @@ impl Application for TextMacroApp {
             Message::KeyPressed(key) => {
                 match key.as_ref() {
                     keyboard::Key::Named(Named::ArrowUp) => {
-                        let current = self.focused_sidebar.unwrap_or(self.active_sidebar);
-                        if current > 0 {
-                            self.focused_sidebar = Some(current - 1);
+                        if window::Id::MAIN == window::Id::MAIN { // Dummy check just an excuse for a block, but we want to focus center if selected macro exists.
+                            // Actually, let's just make up/down toggle the macro selection if we are on the center panel.
+                            // Better: if center is focused, or we just globally use up/down if sidebar isn't active.
+                            // To keep it simple, if no macro is selected, we let sidebar move. If macro selected, macro list moves.
+                            if self.selected_macro_id.is_some() {
+                                let category = match self.active_sidebar {
+                                    1 => MacroCategory::Prompt,
+                                    2 => MacroCategory::Event,
+                                    _ => MacroCategory::Text,
+                                };
+                                let filtered: Vec<&Macro> = self.macros.iter().filter(|m| m.category == category && (self.search_query.is_empty() || m.trigger.to_lowercase().contains(&self.search_query.to_lowercase()) || m.description.to_lowercase().contains(&self.search_query.to_lowercase()))).collect();
+                                if let Some(id) = &self.selected_macro_id {
+                                    if let Some(pos) = filtered.iter().position(|m| &m.id == id) {
+                                        if pos > 0 {
+                                            self.selected_macro_id = Some(filtered[pos - 1].id.clone());
+                                        }
+                                    }
+                                }
+                            } else {
+                                let current = self.focused_sidebar.unwrap_or(self.active_sidebar);
+                                if current > 0 {
+                                    self.focused_sidebar = Some(current - 1);
+                                }
+                            }
                         }
                     }
                     keyboard::Key::Named(Named::ArrowDown) => {
-                        let current = self.focused_sidebar.unwrap_or(self.active_sidebar);
-                        if current < 3 {
-                            self.focused_sidebar = Some(current + 1);
+                        if self.selected_macro_id.is_some() {
+                            let category = match self.active_sidebar {
+                                1 => MacroCategory::Prompt,
+                                2 => MacroCategory::Event,
+                                _ => MacroCategory::Text,
+                            };
+                            let filtered: Vec<&Macro> = self.macros.iter().filter(|m| m.category == category && (self.search_query.is_empty() || m.trigger.to_lowercase().contains(&self.search_query.to_lowercase()) || m.description.to_lowercase().contains(&self.search_query.to_lowercase()))).collect();
+                            if let Some(id) = &self.selected_macro_id {
+                                if let Some(pos) = filtered.iter().position(|m| &m.id == id) {
+                                    if pos < filtered.len() - 1 {
+                                        self.selected_macro_id = Some(filtered[pos + 1].id.clone());
+                                    }
+                                }
+                            }
+                        } else {
+                            let current = self.focused_sidebar.unwrap_or(self.active_sidebar);
+                            if current < 3 {
+                                self.focused_sidebar = Some(current + 1);
+                            }
                         }
                     }
                     keyboard::Key::Named(Named::Enter) => {
@@ -259,8 +317,53 @@ impl Application for TextMacroApp {
                             self.active_sidebar = focused;
                         }
                     }
+                    keyboard::Key::Named(Named::Home) => {
+                        if self.selected_macro_id.is_some() {
+                            let category = match self.active_sidebar {
+                                1 => MacroCategory::Prompt,
+                                2 => MacroCategory::Event,
+                                _ => MacroCategory::Text,
+                            };
+                            let filtered: Vec<&Macro> = self.macros.iter().filter(|m| m.category == category).collect();
+                            if let Some(first) = filtered.first() {
+                                self.selected_macro_id = Some(first.id.clone());
+                            }
+                        }
+                    }
+                    keyboard::Key::Named(Named::End) => {
+                        if self.selected_macro_id.is_some() {
+                            let category = match self.active_sidebar {
+                                1 => MacroCategory::Prompt,
+                                2 => MacroCategory::Event,
+                                _ => MacroCategory::Text,
+                            };
+                            let filtered: Vec<&Macro> = self.macros.iter().filter(|m| m.category == category).collect();
+                            if let Some(last) = filtered.last() {
+                                self.selected_macro_id = Some(last.id.clone());
+                            }
+                        }
+                    }
+                    keyboard::Key::Named(Named::Escape) => {
+                        self.search_query.clear();
+                    }
                     _ => {}
                 }
+                Command::none()
+            }
+            Message::SearchQueryChanged(q) => {
+                self.search_query = q;
+                Command::none()
+            }
+            Message::ClearSearch => {
+                self.search_query.clear();
+                Command::none()
+            }
+            Message::SelectMacro(id) => {
+                self.selected_macro_id = Some(id);
+                Command::none()
+            }
+            Message::NewMacroClick => {
+                // To be implemented in Phase 8
                 Command::none()
             }
         }
@@ -360,16 +463,34 @@ impl Application for TextMacroApp {
             .height(Length::Fill)
             .style(theme::Container::Custom(Box::new(SidebarStyle)));
 
-        let center_panel = container(
-            text("MacroList will be here")
-                .size(16)
-                .style(theme::Text::Color(TEXT_SECONDARY)),
-        )
-        .width(Length::FillPortion(35))
-        .height(Length::Fill)
-        .center_x()
-        .center_y()
-        .style(theme::Container::Custom(Box::new(CenterPanelStyle)));
+        let active_category = match self.active_sidebar {
+            0 => MacroCategory::Text,
+            1 => MacroCategory::Prompt,
+            2 => MacroCategory::Event,
+            _ => MacroCategory::Text, // Default to Text if settings/other
+        };
+
+        let macro_list_view = if self.active_sidebar < 3 {
+            macro_list::view(
+                &self.macros,
+                active_category,
+                &self.search_query,
+                self.selected_macro_id.as_deref(),
+            )
+        } else {
+            // Settings Panel
+            container(text("Settings Panel").style(theme::Text::Color(TEXT_SECONDARY)))
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .center_x()
+                .center_y()
+                .into()
+        };
+
+        let center_panel = container(macro_list_view)
+            .width(Length::FillPortion(35))
+            .height(Length::Fill)
+            .style(theme::Container::Custom(Box::new(CenterPanelStyle)));
 
         let right_panel: Element<'_, Message> = if is_hidden_right {
             Space::new(0.0, 0.0).into()
