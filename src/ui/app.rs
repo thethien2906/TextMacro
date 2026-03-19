@@ -10,10 +10,11 @@ use iced::keyboard;
 use iced::keyboard::key::Named;
 use iced::Event as IcedEvent;
 
-use crate::models::macro_model::{Macro, MacroCategory};
+use crate::models::macro_model::{Macro, MacroCategory, ActionType};
 use crate::storage::macro_repository::StorageManager;
 use crate::ui::macro_list;
-// Design tokens
+use crate::ui::macro_editor;
+use iced::widget::text_editor;
 pub const BACKGROUND: Color = Color::from_rgb(0.059, 0.067, 0.082); // #0F1115
 pub const PANEL: Color = Color::from_rgb(0.086, 0.102, 0.13); // #161A21
 pub const CARD: Color = Color::from_rgb(0.118, 0.137, 0.169); // #1E232B
@@ -174,6 +175,38 @@ pub struct TextMacroApp {
     search_query: String,
     selected_macro_id: Option<String>,
     _storage: StorageManager,
+    editor_state: EditorState,
+    pending_navigation: Option<Box<Message>>,
+    show_delete_dialog: bool,
+}
+
+#[derive(Debug)]
+pub struct EditorState {
+    pub is_active: bool,
+    pub is_new: bool,
+    pub original_id: Option<String>,
+    pub trigger: String,
+    pub description: String,
+    pub content: text_editor::Content,
+    pub enabled: bool,
+    pub has_unsaved_changes: bool,
+    pub validation_error: Option<String>,
+}
+
+impl EditorState {
+    pub fn default() -> Self {
+        Self {
+            is_active: false,
+            is_new: false,
+            original_id: None,
+            trigger: String::new(),
+            description: String::new(),
+            content: text_editor::Content::new(),
+            enabled: true,
+            has_unsaved_changes: false,
+            validation_error: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -189,6 +222,16 @@ pub enum Message {
     ClearSearch,
     SelectMacro(String),
     NewMacroClick,
+    EditorTriggerChanged(String),
+    EditorDescriptionChanged(String),
+    EditorContentAction(text_editor::Action),
+    EditorEnabledToggled(bool),
+    SaveMacro,
+    DeleteMacroClick,
+    ConfirmDelete,
+    CancelDelete,
+    ConfirmDiscard,
+    CancelDiscard,
 }
 
 const SIDEBAR_ITEMS: &[(&str, &str)] = &[
@@ -219,6 +262,9 @@ impl Application for TextMacroApp {
                 search_query: String::new(),
                 selected_macro_id: None,
                 _storage: storage,
+                editor_state: EditorState::default(),
+                pending_navigation: None,
+                show_delete_dialog: false,
             },
             Command::none(),
         )
@@ -245,9 +291,14 @@ impl Application for TextMacroApp {
     fn update(&mut self, message: Message) -> Command<Message> {
         match message {
             Message::SidebarSelected(idx) => {
+                if self.editor_state.has_unsaved_changes {
+                    self.pending_navigation = Some(Box::new(Message::SidebarSelected(idx)));
+                    return Command::none();
+                }
                 self.active_sidebar = idx;
                 self.search_query.clear();
                 self.selected_macro_id = None;
+                self.editor_state = EditorState::default();
                 Command::none()
             }
             Message::TitleBarDragged => window::drag(window::Id::MAIN),
@@ -359,11 +410,158 @@ impl Application for TextMacroApp {
                 Command::none()
             }
             Message::SelectMacro(id) => {
-                self.selected_macro_id = Some(id);
+                if self.editor_state.has_unsaved_changes {
+                    self.pending_navigation = Some(Box::new(Message::SelectMacro(id)));
+                    return Command::none();
+                }
+                
+                self.selected_macro_id = Some(id.clone());
+                self.show_delete_dialog = false;
+                
+                if let Some(m) = self.macros.iter().find(|m| m.id == id) {
+                    self.editor_state = EditorState {
+                        is_active: true,
+                        is_new: false,
+                        original_id: Some(id),
+                        trigger: m.trigger.clone(),
+                        description: m.description.clone(),
+                        content: text_editor::Content::with_text(&m.content),
+                        enabled: m.enabled,
+                        has_unsaved_changes: false,
+                        validation_error: None,
+                    };
+                }
                 Command::none()
             }
             Message::NewMacroClick => {
-                // To be implemented in Phase 8
+                if self.editor_state.has_unsaved_changes {
+                    self.pending_navigation = Some(Box::new(Message::NewMacroClick));
+                    return Command::none();
+                }
+                self.selected_macro_id = None;
+                self.show_delete_dialog = false;
+                self.editor_state = EditorState {
+                    is_active: true,
+                    is_new: true,
+                    original_id: None,
+                    trigger: String::new(),
+                    description: String::new(),
+                    content: text_editor::Content::new(),
+                    enabled: true,
+                    has_unsaved_changes: true, // Mark a new macro as having unsaved changes to enable save button maybe? No, let's wait until they type.
+                    validation_error: None,
+                };
+                self.editor_state.has_unsaved_changes = false;
+                Command::none()
+            }
+            Message::EditorTriggerChanged(trigger) => {
+                self.editor_state.trigger = trigger;
+                self.editor_state.has_unsaved_changes = true;
+                if let Some(err) = &self.editor_state.validation_error {
+                    if err.contains("Trigger") {
+                        self.editor_state.validation_error = None;
+                    }
+                }
+                Command::none()
+            }
+            Message::EditorDescriptionChanged(desc) => {
+                self.editor_state.description = desc;
+                self.editor_state.has_unsaved_changes = true;
+                Command::none()
+            }
+            Message::EditorContentAction(action) => {
+                self.editor_state.content.perform(action);
+                self.editor_state.has_unsaved_changes = true;
+                if let Some(err) = &self.editor_state.validation_error {
+                    if err.contains("Content") {
+                        self.editor_state.validation_error = None;
+                    }
+                }
+                Command::none()
+            }
+            Message::EditorEnabledToggled(enabled) => {
+                self.editor_state.enabled = enabled;
+                self.editor_state.has_unsaved_changes = true;
+                Command::none()
+            }
+            Message::SaveMacro => {
+                if self.editor_state.trigger.is_empty() {
+                    self.editor_state.validation_error = Some("Trigger is required".to_string());
+                    return Command::none();
+                }
+                
+                let is_duplicate = self.macros.iter().any(|m| {
+                    m.trigger == self.editor_state.trigger && 
+                    Some(&m.id) != self.editor_state.original_id.as_ref()
+                });
+                
+                if is_duplicate {
+                    self.editor_state.validation_error = Some("Trigger already exists".to_string());
+                    return Command::none();
+                }
+
+                let content_str = self.editor_state.content.text();
+                // We could validate content empty here, but sometimes empty content is okay for event macros.
+                // Let's just create/update the macro
+                if self.editor_state.is_new {
+                    let mut new_macro = Macro::new(self.editor_state.trigger.clone(), content_str);
+                    new_macro.description = self.editor_state.description.clone();
+                    new_macro.enabled = self.editor_state.enabled;
+                    new_macro.category = match self.active_sidebar {
+                        1 => MacroCategory::Prompt,
+                        2 => MacroCategory::Event,
+                        _ => MacroCategory::Text,
+                    };
+                    self.selected_macro_id = Some(new_macro.id.clone());
+                    self.macros.push(new_macro);
+                    self.editor_state.is_new = false;
+                    self.editor_state.original_id = self.selected_macro_id.clone();
+                } else {
+                    if let Some(id) = &self.editor_state.original_id {
+                        if let Some(m) = self.macros.iter_mut().find(|m| &m.id == id) {
+                            m.trigger = self.editor_state.trigger.clone();
+                            m.description = self.editor_state.description.clone();
+                            m.content = content_str;
+                            m.enabled = self.editor_state.enabled;
+                            m.touch();
+                        }
+                    }
+                }
+                
+                self.editor_state.has_unsaved_changes = false;
+                self.editor_state.validation_error = None;
+                
+                let _ = self._storage.save_macros(&self.macros);
+                // Also trigger macro_engine refresh, but this is future phase.
+                Command::none()
+            }
+            Message::DeleteMacroClick => {
+                self.show_delete_dialog = true;
+                Command::none()
+            }
+            Message::ConfirmDelete => {
+                if let Some(id) = &self.editor_state.original_id {
+                    self.macros.retain(|m| &m.id != id);
+                    let _ = self._storage.save_macros(&self.macros);
+                }
+                self.editor_state = EditorState::default();
+                self.selected_macro_id = None;
+                self.show_delete_dialog = false;
+                Command::none()
+            }
+            Message::CancelDelete => {
+                self.show_delete_dialog = false;
+                Command::none()
+            }
+            Message::ConfirmDiscard => {
+                self.editor_state.has_unsaved_changes = false;
+                if let Some(msg) = self.pending_navigation.take() {
+                    return self.update(*msg);
+                }
+                Command::none()
+            }
+            Message::CancelDiscard => {
+                self.pending_navigation = None;
                 Command::none()
             }
         }
@@ -494,18 +692,44 @@ impl Application for TextMacroApp {
 
         let right_panel: Element<'_, Message> = if is_hidden_right {
             Space::new(0.0, 0.0).into()
-        } else {
-            container(text("MacroEditor will be here").size(16).style(theme::Text::Color(TEXT_SECONDARY)))
+        } else if self.pending_navigation.is_some() {
+            let dialog_box = column![
+                text("Unsaved Changes").size(20).style(theme::Text::Color(TEXT_PRIMARY)),
+                text("You have unsaved changes. Do you want to discard them?").size(14).style(theme::Text::Color(TEXT_SECONDARY)),
+                Space::new(0.0, 20.0),
+                row![
+                    horizontal_space().width(Length::Fill),
+                    button(text("Cancel").horizontal_alignment(alignment::Horizontal::Center).style(theme::Text::Color(TEXT_PRIMARY)))
+                        .padding(10)
+                        .width(Length::Fixed(100.0))
+                        .style(theme::Button::custom(crate::ui::macro_list::ClearBtnStyle))
+                        .on_press(Message::CancelDiscard),
+                    Space::new(10.0, 0.0),
+                    button(text("Discard").horizontal_alignment(alignment::Horizontal::Center).style(theme::Text::Color(ERROR)))
+                        .padding(10)
+                        .width(Length::Fixed(100.0))
+                        .style(theme::Button::custom(crate::ui::macro_editor::DangerButtonStyle))
+                        .on_press(Message::ConfirmDiscard),
+                ].align_items(alignment::Alignment::Center)
+            ].padding(24);
+            
+            container(dialog_box)
                 .width(Length::FillPortion(65))
                 .height(Length::Fill)
                 .center_x()
                 .center_y()
                 .style(theme::Container::Custom(Box::new(CenterPanelStyle)))
                 .into()
+        } else {
+            container(macro_editor::view(&self.editor_state, self.show_delete_dialog))
+                .width(Length::FillPortion(65))
+                .height(Length::Fill)
+                .style(theme::Container::Custom(Box::new(CenterPanelStyle)))
+                .into()
         };
 
         let content = row![sidebar, center_panel, right_panel].height(Length::Fill);
-
+        
         container(column![draggble_title_bar, content])
             .style(theme::Container::Custom(Box::new(MainContainerStyle)))
             .width(Length::Fill)
