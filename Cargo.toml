@@ -13,3 +13,4 @@ rdev = "0.5.3"
 log = "0.4.29"
 arboard = "3.6.1"
 iced = "0.12"
+iced_aw = { version = "0.9.0", features = ["context_menu", "menu", "card", "modal", "floating_element"] }
