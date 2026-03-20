@@ -148,10 +148,12 @@ impl StorageManager {
         if path.exists() {
             match json_loader::load_macros(&path) {
                 Ok((macros, warnings)) => {
+                    log::info!(target: "storage", "Loaded {} macros from storage.", macros.len());
                     all_warnings.extend(warnings);
                     return (macros, all_warnings);
                 }
                 Err(e) => {
+                    log::error!(target: "storage", "Primary macros.json failed: {}", e);
                     all_warnings.push(format!("Primary macros.json failed: {}", e));
                 }
             }
@@ -160,6 +162,7 @@ impl StorageManager {
         // Step 2: Try .bak
         let bak_path = path.with_extension("json.bak");
         if bak_path.exists() {
+            log::warn!(target: "storage", "Attempting recovery from macros.json.bak");
             all_warnings.push("Attempting recovery from macros.json.bak".into());
             if let Ok(content) = fs::read_to_string(&bak_path) {
                 if let Ok((macros, warnings)) =
@@ -211,7 +214,9 @@ impl StorageManager {
 
     /// Loads config with fallback-to-defaults recovery.
     pub fn load_config(&self) -> (Config, Vec<String>) {
-        json_loader::load_config(&self.config_path())
+        let result = json_loader::load_config(&self.config_path());
+        log::info!(target: "storage", "Configuration loaded/updated");
+        result
     }
 
     /// Saves config to disk (atomic write).

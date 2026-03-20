@@ -71,14 +71,21 @@ impl ActionExecutor {
         content: &str,
         trigger_length: usize,
     ) -> Result<ExecutionResult, EngineError> {
+        log::info!(target: "injector", "Inserting text for macro: {}", macro_id);
         TextInjector::inject_text(content, trigger_length).map_err(|e| match e {
-            InjectorError::ClipboardAccessFailed(msg) => EngineError {
-                code: "EXECUTION_FAILED".into(),
-                message: format!("Failed to insert text: {}", msg),
+            InjectorError::ClipboardAccessFailed(msg) => {
+                log::error!(target: "injector", "Text insert failed (clipboard): {}", msg);
+                EngineError {
+                    code: "EXECUTION_FAILED".into(),
+                    message: format!("Failed to insert text: {}", msg),
+                }
             },
-            InjectorError::SimulationFailed(msg) => EngineError {
-                code: "EXECUTION_FAILED".into(),
-                message: format!("Failed to insert text: {}", msg),
+            InjectorError::SimulationFailed(msg) => {
+                log::error!(target: "injector", "Text insert failed (simulation): {}", msg);
+                EngineError {
+                    code: "EXECUTION_FAILED".into(),
+                    message: format!("Failed to insert text: {}", msg),
+                }
             },
         })?;
 
@@ -95,14 +102,21 @@ impl ActionExecutor {
         macro_id: &str,
         content: &str,
     ) -> Result<ExecutionResult, EngineError> {
+        log::info!(target: "injector", "Inserting text (no delete) for macro: {}", macro_id);
         TextInjector::inject_text_no_delete(content).map_err(|e| match e {
-            InjectorError::ClipboardAccessFailed(msg) => EngineError {
-                code: "EXECUTION_FAILED".into(),
-                message: format!("Failed to insert text: {}", msg),
+            InjectorError::ClipboardAccessFailed(msg) => {
+                log::error!(target: "injector", "Text insert failed (clipboard): {}", msg);
+                EngineError {
+                    code: "EXECUTION_FAILED".into(),
+                    message: format!("Failed to insert text: {}", msg),
+                }
             },
-            InjectorError::SimulationFailed(msg) => EngineError {
-                code: "EXECUTION_FAILED".into(),
-                message: format!("Failed to insert text: {}", msg),
+            InjectorError::SimulationFailed(msg) => {
+                log::error!(target: "injector", "Text insert failed (simulation): {}", msg);
+                EngineError {
+                    code: "EXECUTION_FAILED".into(),
+                    message: format!("Failed to insert text: {}", msg),
+                }
             },
         })?;
 
@@ -116,6 +130,7 @@ impl ActionExecutor {
 
     /// Execute a shell script with timeout.
     fn execute_script(macro_id: &str, script: &str) -> Result<ExecutionResult, EngineError> {
+        log::info!(target: "executor", "Executing script for macro: {}", macro_id);
         let mut command = if cfg!(target_os = "windows") {
             let mut c = Command::new("cmd.exe");
             c.args(["/C", script]);
