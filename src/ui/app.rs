@@ -16,6 +16,7 @@ use crate::storage::macro_repository::StorageManager;
 use crate::ui::macro_list;
 use crate::ui::macro_editor;
 use crate::ui::settings_panel;
+use crate::ui::overlays::{Toast, ToastType, CommandPaletteState};
 use iced::widget::text_editor;
 pub const BACKGROUND: Color = Color::from_rgb(0.059, 0.067, 0.082); // #0F1115
 pub const PANEL: Color = Color::from_rgb(0.086, 0.102, 0.13); // #161A21
@@ -183,6 +184,8 @@ pub struct TextMacroApp {
     config: Config,
     config_validation_errors: std::collections::HashMap<String, String>,
     is_recording_shortcut: bool,
+    command_palette: CommandPaletteState,
+    toasts: Vec<Toast>,
 }
 
 #[derive(Debug)]
@@ -249,6 +252,18 @@ pub enum Message {
     UIDensitySelected(String),
     StartShortcutRecording,
     CancelShortcutRecording,
+    // Overlays
+    ToggleCommandPalette,
+    CommandPaletteQueryChanged(String),
+    CommandPaletteExecute,
+    CommandPaletteSelectUp,
+    CommandPaletteSelectDown,
+    ToggleMacroEnabledReq(String),
+    DuplicateMacroReq(String),
+    RequestDeleteMacroReq(String),
+    DismissToast(uuid::Uuid),
+    AddToast(ToastType, String),
+    TickToasts(std::time::Instant),
 }
 
 const SIDEBAR_ITEMS: &[(&str, &str)] = &[
@@ -286,6 +301,8 @@ impl Application for TextMacroApp {
                 config,
                 config_validation_errors: std::collections::HashMap::new(),
                 is_recording_shortcut: false,
+                command_palette: CommandPaletteState::default(),
+                toasts: Vec::new(),
             },
             Command::none(),
         )
@@ -303,17 +320,19 @@ impl Application for TextMacroApp {
     }
 
     fn subscription(&self) -> Subscription<Message> {
-        Subscription::batch([
+        let subs = vec![
             iced::event::listen_with(|event, _status| match event {
-                IcedEvent::Window(_, WindowEvent::Resized { width: w, height: h }) => {
-                    Some(Message::WindowResized(w, h))
+                IcedEvent::Window(_, WindowEvent::Resized { width, height }) => {
+                    Some(Message::WindowResized(width, height))
                 }
                 IcedEvent::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. }) => {
-                    Some(Message::KeyPressed(key, modifiers))
+                    Some(Message::KeyPressed(key.clone(), modifiers))
                 }
                 _ => None,
             }),
-        ])
+        ];
+        
+        Subscription::batch(subs)
     }
 
     fn update(&mut self, message: Message) -> Command<Message> {
@@ -341,6 +360,42 @@ impl Application for TextMacroApp {
                 Command::none()
             }
             Message::KeyPressed(key, modifiers) => {
+                let mut current_combo = String::new();
+                if modifiers.control() { current_combo.push_str("Ctrl+"); }
+                if modifiers.alt() { current_combo.push_str("Alt+"); }
+                if modifiers.shift() { current_combo.push_str("Shift+"); }
+                if modifiers.logo() { current_combo.push_str("Meta+"); }
+                
+                let key_str = match key.as_ref() {
+                    keyboard::Key::Named(Named::Escape) => Some("Esc"),
+                    keyboard::Key::Named(Named::Enter) => Some("Enter"),
+                    keyboard::Key::Named(Named::Space) => Some("Space"),
+                    keyboard::Key::Character(s) => Some(s.as_ref()),
+                    _ => None,
+                };
+                
+                if let Some(s) = key_str {
+                    let shortcut = format!("{}{}", current_combo, s.to_uppercase());
+                    let target = if self.config.command_palette_shortcut.is_empty() { "Ctrl+Shift+P" } else { &self.config.command_palette_shortcut };
+                    if shortcut == target && !self.is_recording_shortcut {
+                        return self.update(Message::ToggleCommandPalette);
+                    }
+                }
+
+                if self.command_palette.is_open {
+                    match key.as_ref() {
+                        keyboard::Key::Named(Named::Escape) => {
+                            self.command_palette.is_open = false;
+                            return Command::none();
+                        }
+                        keyboard::Key::Named(Named::ArrowUp) => return self.update(Message::CommandPaletteSelectUp),
+                        keyboard::Key::Named(Named::ArrowDown) => return self.update(Message::CommandPaletteSelectDown),
+                        keyboard::Key::Named(Named::Enter) => return self.update(Message::CommandPaletteExecute),
+                        _ => {}
+                    }
+                    return Command::none();
+                }
+
                 if self.is_recording_shortcut {
                     if matches!(key.as_ref(), keyboard::Key::Named(Named::Escape)) {
                         self.is_recording_shortcut = false;
@@ -686,6 +741,117 @@ impl Application for TextMacroApp {
                 self.is_recording_shortcut = false;
                 Command::none()
             }
+            Message::ToggleCommandPalette => {
+                self.command_palette.is_open = !self.command_palette.is_open;
+                if self.command_palette.is_open {
+                    self.command_palette.query.clear();
+                    self.command_palette.selected_index = 0;
+                }
+                Command::none()
+            }
+            Message::CommandPaletteQueryChanged(q) => {
+                self.command_palette.query = q;
+                self.command_palette.selected_index = 0;
+                Command::none()
+            }
+            Message::CommandPaletteSelectUp => {
+                if self.command_palette.selected_index > 0 {
+                    self.command_palette.selected_index -= 1;
+                }
+                Command::none()
+            }
+            Message::CommandPaletteSelectDown => {
+                self.command_palette.selected_index += 1;
+                Command::none()
+            }
+            Message::CommandPaletteExecute => {
+                let lower_query = self.command_palette.query.to_lowercase();
+                let mut filtered: Vec<&Macro> = self.macros.iter().filter(|m| {
+                    if lower_query.is_empty() { true } else {
+                        m.trigger.to_lowercase().contains(&lower_query) || m.description.to_lowercase().contains(&lower_query)
+                    }
+                }).collect();
+                filtered.sort_by(|a, b| a.trigger.cmp(&b.trigger));
+                
+                if let Some(m) = filtered.get(self.command_palette.selected_index) {
+                    let t_id = uuid::Uuid::new_v4();
+                    let mut t = Toast::new(format!("Executed: {}", m.trigger), ToastType::Success);
+                    t.id = t_id.clone();
+                    self.toasts.push(t);
+                    self.command_palette.is_open = false;
+                    return Command::perform(async move {
+                        std::thread::sleep(std::time::Duration::from_millis(3000));
+                        t_id
+                    }, Message::DismissToast);
+                }
+                
+                self.command_palette.is_open = false;
+                Command::none()
+            }
+            Message::ToggleMacroEnabledReq(id) => {
+                let mut enabled_str = None;
+                if let Some(m) = self.macros.iter_mut().find(|m| m.id == id) {
+                    m.enabled = !m.enabled;
+                    enabled_str = Some(if m.enabled { "Macro enabled".to_string() } else { "Macro disabled".to_string() });
+                }
+                
+                if let Some(s) = enabled_str {
+                    let _ = self._storage.save_macros(&self.macros);
+                    let m_id = id.clone();
+                    self.toasts.push(Toast::new(s, ToastType::Info));
+                    return Command::perform(async move {
+                        std::thread::sleep(std::time::Duration::from_millis(3000));
+                        m_id
+                    }, |i| Message::DismissToast(uuid::Uuid::parse_str(&i).unwrap_or_default()));
+                }
+                Command::none()
+            }
+            Message::DuplicateMacroReq(id) => {
+                if let Some(m) = self.macros.iter().find(|m| m.id == id).cloned() {
+                    let mut duplicate = m.clone();
+                    let new_id = uuid::Uuid::new_v4();
+                    duplicate.id = new_id.to_string();
+                    duplicate.trigger = format!("{}-copy", m.trigger);
+                    duplicate.created_at = chrono::Utc::now().to_rfc3339();
+                    duplicate.updated_at = duplicate.created_at.clone();
+                    self.macros.push(duplicate);
+                    let _ = self._storage.save_macros(&self.macros);
+                    self.toasts.push(Toast::new("Macro duplicated".into(), ToastType::Success));
+                    return Command::perform(async move {
+                        std::thread::sleep(std::time::Duration::from_millis(3000));
+                        new_id
+                    }, Message::DismissToast);
+                }
+                Command::none()
+            }
+            Message::RequestDeleteMacroReq(id) => {
+                self.macros.retain(|m| m.id != id);
+                let _ = self._storage.save_macros(&self.macros);
+                if self.selected_macro_id.as_deref() == Some(id.as_str()) {
+                    self.selected_macro_id = None;
+                    self.editor_state = EditorState::default();
+                }
+                let t_id = uuid::Uuid::new_v4();
+                let mut t = Toast::new("Macro deleted".into(), ToastType::Warning);
+                t.id = t_id.clone();
+                self.toasts.push(t);
+                return Command::perform(async move {
+                    std::thread::sleep(std::time::Duration::from_millis(3000));
+                    t_id
+                }, Message::DismissToast);
+            }
+            Message::DismissToast(id) => {
+                self.toasts.retain(|t| t.id != id);
+                Command::none()
+            }
+            Message::AddToast(t_type, msg) => {
+                self.toasts.push(Toast::new(msg, t_type));
+                Command::none()
+            }
+            Message::TickToasts(_) => {
+                self.toasts.retain(|t| t.created_at.elapsed() < t.duration);
+                Command::none()
+            }
         }
     }
 
@@ -857,10 +1023,13 @@ impl Application for TextMacroApp {
             row![sidebar, center_panel, right_panel].height(Length::Fill)
         };
         
-        container(column![draggble_title_bar, content])
+        let main_container: Element<'_, Message> = container(column![draggble_title_bar, content])
             .style(theme::Container::Custom(Box::new(MainContainerStyle)))
             .width(Length::Fill)
             .height(Length::Fill)
-            .into()
+            .into();
+            
+        let modal = crate::ui::overlays::view_command_palette(main_container, &self.command_palette, &self.macros);
+        crate::ui::overlays::view_toasts(modal, &self.toasts)
     }
 }
