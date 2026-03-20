@@ -1,6 +1,7 @@
 // ui/macro_list.rs
 use iced::widget::{button, column, container, horizontal_space, row, scrollable, text, text_input, Space};
 use iced::{alignment, theme, Background, Border, Color, Element, Length, Theme};
+use iced_aw::ContextMenu;
 
 use crate::models::macro_model::{Macro, MacroCategory};
 use crate::ui::app::{Message, ACCENT, CARD, SUCCESS, TEXT_PRIMARY, TEXT_SECONDARY};
@@ -138,7 +139,27 @@ pub fn view<'a>(
                 .style(theme::Button::custom(CardStyle { is_disabled }))
                 .on_press(Message::SelectMacro(m.id.clone()));
 
-            list_col = list_col.push(card_btn);
+            let m_id_edit = m.id.clone();
+            let m_id_dup = m.id.clone();
+            let m_id_tog = m.id.clone();
+            let m_id_del = m.id.clone();
+            let m_enabled = m.enabled;
+
+            let context_card = ContextMenu::new(card_btn, move || {
+                let edit_btn = button(text("Edit").size(14))
+                    .width(Length::Fill).padding(6).style(theme::Button::custom(MenuBtnStyle)).on_press(Message::SelectMacro(m_id_edit.clone()));
+                let dup_btn = button(text("Duplicate").size(14))
+                    .width(Length::Fill).padding(6).style(theme::Button::custom(MenuBtnStyle)).on_press(Message::DuplicateMacroReq(m_id_dup.clone()));
+                let tog_btn = button(text(if m_enabled { "Disable" } else { "Enable" }).size(14))
+                    .width(Length::Fill).padding(6).style(theme::Button::custom(MenuBtnStyle)).on_press(Message::ToggleMacroEnabledReq(m_id_tog.clone()));
+                let del_btn = button(text("Delete").size(14).style(theme::Text::Color(crate::ui::app::ERROR)))
+                    .width(Length::Fill).padding(6).style(theme::Button::custom(MenuBtnStyle)).on_press(Message::RequestDeleteMacroReq(m_id_del.clone()));
+                    
+                let menu_col = column![edit_btn, dup_btn, tog_btn, del_btn].width(Length::Fixed(150.0));
+                container(menu_col).padding(4).style(theme::Container::Custom(Box::new(ContextMenuContainerStyle))).into()
+            });
+            
+            list_col = list_col.push(context_card);
         }
     }
 
@@ -218,5 +239,39 @@ impl button::StyleSheet for PrimaryButtonStyle {
             (ACCENT.b * 1.1).min(1.0),
         )));
         app
+    }
+}
+
+pub struct MenuBtnStyle;
+impl button::StyleSheet for MenuBtnStyle {
+    type Style = Theme;
+    fn active(&self, _style: &Self::Style) -> button::Appearance {
+        button::Appearance {
+            text_color: TEXT_PRIMARY,
+            background: Some(Background::Color(Color::TRANSPARENT)),
+            border: Border::default(),
+            ..Default::default()
+        }
+    }
+    fn hovered(&self, _style: &Self::Style) -> button::Appearance {
+        let mut app = self.active(_style);
+        app.background = Some(Background::Color(Color::from_rgb(0.25, 0.28, 0.35)));
+        app
+    }
+}
+
+pub struct ContextMenuContainerStyle;
+impl container::StyleSheet for ContextMenuContainerStyle {
+    type Style = Theme;
+    fn appearance(&self, _style: &Self::Style) -> container::Appearance {
+        container::Appearance {
+            background: Some(Background::Color(CARD)),
+            border: Border {
+                color: TEXT_SECONDARY,
+                width: 1.0,
+                radius: 6.0.into()
+            },
+            ..Default::default()
+        }
     }
 }
