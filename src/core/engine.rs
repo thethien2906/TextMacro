@@ -1,25 +1,84 @@
 use std::collections::HashMap;
+use std::sync::{Arc, RwLock};
+use std::thread;
 
 use crate::core::action_executor::ActionExecutor;
 use crate::models::config::Config;
-use crate::models::engine_commands::{MacroCreateRequest, MacroUpdateRequest};
-use crate::models::engine_responses::{EngineError, ExecutionResult};
+use crate::models::engine_commands::{EngineCommand, MacroCreateRequest, MacroUpdateRequest};
+use crate::models::engine_responses::{EngineError, EngineResponse, ExecutionResult, ImportResult, ExportResult};
 use crate::models::macro_model::{ActionType, Macro, MacroCategory};
 use crate::storage::macro_repository::StorageManager;
+use crate::storage::json_loader;
+use serde_json::json;
 
-/// The core macro management engine.
-pub struct Engine {
+/// Shared state between the engine and the event listener.
+pub struct EngineState {
     /// Maps trigger string -> Macro. For fast exact match lookups.
     pub trigger_map: HashMap<String, Macro>,
     /// Maps macro UUID -> Macro. For management operations.
     pub id_map: HashMap<String, Macro>,
     /// The runtime application configuration.
     pub config: Config,
+}
+
+/// The core macro management engine.
+pub struct Engine {
+    /// Shared state
+    pub state: Arc<RwLock<EngineState>>,
     /// Storage layer for persisting data.
     pub storage: StorageManager,
 }
 
 impl Engine {
+    /// Spawns the engine in a background thread and returns coordination channels.
+    pub fn spawn(storage: StorageManager) -> (std::sync::mpsc::Sender<EngineCommand>, std::sync::mpsc::Receiver<EngineResponse>) {
+        let (cmd_tx, cmd_rx) = std::sync::mpsc::channel();
+        let (resp_tx, resp_rx) = std::sync::mpsc::channel();
+        let mut engine = Engine::new(storage);
+        
+        let state_clone = engine.state.clone();
+        let resp_tx_clone = resp_tx.clone();
+
+        std::thread::spawn(move || {
+            let (input_tx, input_rx) = std::sync::mpsc::channel();
+            // Start the keyboard listener
+            crate::input::keyboard_listener::KeyboardListener::new(input_tx).start();
+            
+            let mut trigger_detector = crate::core::trigger_detector::TriggerDetector::new(100);
+            
+            for action in input_rx {
+                match action {
+                    crate::input::keyboard_listener::InputAction::Char(c) => trigger_detector.add_char(c),
+                    crate::input::keyboard_listener::InputAction::Backspace => trigger_detector.backspace(),
+                    crate::input::keyboard_listener::InputAction::Reset => trigger_detector.clear(),
+                }
+                
+                let state = state_clone.read().unwrap();
+                
+                if let Some(macro_rc) = trigger_detector.check_match(state.trigger_map.values()) {
+                    if macro_rc.enabled {
+                         log::info!(target: "trigger", "Macro triggered: {} ({})", macro_rc.trigger, macro_rc.id);
+                         let execution_result = crate::core::action_executor::ActionExecutor::execute_typed_trigger(macro_rc, macro_rc.trigger.chars().count());
+                         match execution_result {
+                             Ok(res) => { let _ = resp_tx_clone.send(EngineResponse::MacroExecuted(res)); }
+                             Err(e) => { let _ = resp_tx_clone.send(EngineResponse::Error(e)); }
+                         }
+                         trigger_detector.clear();
+                    }
+                }
+            }
+        });
+
+        std::thread::spawn(move || {
+            for cmd in cmd_rx {
+                if let Some(resp) = engine.handle_command(cmd) {
+                    let _ = resp_tx.send(resp);
+                }
+            }
+        });
+        (cmd_tx, resp_rx)
+    }
+
     /// Initialize the engine, loading macros and config from storage.
     pub fn new(storage: StorageManager) -> Self {
         let (macros, _) = storage.load_macros();
@@ -34,17 +93,22 @@ impl Engine {
             id_map.insert(m.id.clone(), m);
         }
 
-        Self {
+        let state = EngineState {
             trigger_map,
             id_map,
             config,
+        };
+
+        Self {
+            state: Arc::new(RwLock::new(state)),
             storage,
         }
     }
 
     /// Retrieve all macros for a given category.
     pub fn get_macros(&self, category: MacroCategory) -> Vec<Macro> {
-        let mut result: Vec<Macro> = self
+        let state = self.state.read().unwrap();
+        let mut result: Vec<Macro> = state
             .id_map
             .values()
             .filter(|m| m.category == category)
@@ -58,7 +122,8 @@ impl Engine {
 
     /// Retrieve a single macro by ID.
     pub fn get_macro_by_id(&self, id: &str) -> Result<Macro, EngineError> {
-        self.id_map.get(id).cloned().ok_or_else(|| EngineError {
+        let state = self.state.read().unwrap();
+        state.id_map.get(id).cloned().ok_or_else(|| EngineError {
             code: "MACRO_NOT_FOUND".into(),
             message: format!("No macro exists with the given ID: {}", id),
         })
@@ -85,12 +150,14 @@ impl Engine {
                 message: "Content is required".into(),
             });
         }
-        if self.trigger_map.contains_key(&req.trigger) {
+        let state = self.state.read().unwrap();
+        if state.trigger_map.contains_key(&req.trigger) {
             return Err(EngineError {
                 code: "TRIGGER_EXISTS".into(),
                 message: "Trigger already exists".into(),
             });
         }
+        drop(state);
 
         let mut m = Macro::new(req.trigger, req.content);
         m.category = req.category;
@@ -134,12 +201,14 @@ impl Engine {
                         message: "Trigger must be 2-50 characters".into(),
                     });
                 }
-                if self.trigger_map.contains_key(&new_trigger) {
+                let state = self.state.read().unwrap();
+                if state.trigger_map.contains_key(&new_trigger) {
                     return Err(EngineError {
                         code: "TRIGGER_EXISTS".into(),
                         message: "Trigger already exists".into(),
                     });
                 }
+                drop(state);
                 m.trigger = new_trigger;
                 trigger_changed = true;
             }
@@ -184,7 +253,7 @@ impl Engine {
         m.touch();
 
         if trigger_changed {
-            self.trigger_map.remove(&old_trigger);
+            self.state.write().unwrap().trigger_map.remove(&old_trigger);
         }
         self.insert_macro(m.clone());
 
@@ -202,8 +271,10 @@ impl Engine {
     pub fn delete_macro(&mut self, id: &str) -> Result<String, EngineError> {
         let m = self.get_macro_by_id(id)?;
 
-        self.trigger_map.remove(&m.trigger);
-        self.id_map.remove(&m.id);
+        let mut state = self.state.write().unwrap();
+        state.trigger_map.remove(&m.trigger);
+        state.id_map.remove(&m.id);
+        drop(state);
 
         if let Err(e) = self.persist_macros() {
             return Err(EngineError {
@@ -239,7 +310,9 @@ impl Engine {
 
     /// Search macros by query string.
     pub fn search_macros(&self, query: &str) -> Vec<Macro> {
-        let mut all_macros: Vec<Macro> = self.id_map.values().cloned().collect();
+        let state = self.state.read().unwrap();
+        let mut all_macros: Vec<Macro> = state.id_map.values().cloned().collect();
+        drop(state);
         if query.is_empty() {
             all_macros.sort_by(|a, b| a.trigger.to_lowercase().cmp(&b.trigger.to_lowercase()));
             return all_macros;
@@ -301,7 +374,8 @@ impl Engine {
 
     /// Get current configuration.
     pub fn get_config(&self) -> Config {
-        self.config.clone()
+        let state = self.state.read().unwrap();
+        state.config.clone()
     }
 
     /// Update configuration.
@@ -331,15 +405,22 @@ impl Engine {
             });
         }
 
-        self.config = config;
-        if let Err(e) = self.storage.save_config(&self.config) {
+        let mut state = self.state.write().unwrap();
+        let changed_run_on_startup = state.config.run_on_startup != config.run_on_startup;
+        state.config = config.clone();
+        if let Err(e) = self.storage.save_config(&state.config) {
             return Err(EngineError {
                 code: "STORAGE_WRITE_ERROR".into(),
                 message: e.to_string(),
             });
         }
+        drop(state);
 
-        Ok(self.config.clone())
+        if changed_run_on_startup {
+            crate::core::startup::set_run_on_startup(config.run_on_startup);
+        }
+
+        Ok(config)
     }
 
     /// Execute a macro by ID (manual execution from UI / Command Palette).
@@ -365,15 +446,221 @@ impl Engine {
         ActionExecutor::execute_event_trigger(macro_data)
     }
 
+    pub fn handle_command(&mut self, cmd: EngineCommand) -> Option<EngineResponse> {
+        match cmd {
+            EngineCommand::GetMacros(category) => {
+                let macros = self.get_macros(category);
+                Some(EngineResponse::MacroList(macros))
+            }
+            EngineCommand::CreateMacro(req) => {
+                match self.create_macro(req) {
+                    Ok(m) => {
+                        log::info!(target: "storage", "Macro created: {}", m.id);
+                        Some(EngineResponse::MacroCreated(m))
+                    }
+                    Err(e) => {
+                        log::error!(target: "storage", "Macro create failed: {}", e.message);
+                        Some(EngineResponse::Error(e))
+                    }
+                }
+            }
+            EngineCommand::UpdateMacro(req) => {
+                match self.update_macro(req) {
+                    Ok(m) => {
+                        log::info!(target: "storage", "Macro updated: {}", m.id);
+                        Some(EngineResponse::MacroUpdated(m))
+                    }
+                    Err(e) => {
+                        log::error!(target: "storage", "Macro update failed: {}", e.message);
+                        Some(EngineResponse::Error(e))
+                    }
+                }
+            }
+            EngineCommand::DeleteMacro(id) => {
+                match self.delete_macro(&id) {
+                    Ok(id) => {
+                        log::info!(target: "storage", "Macro deleted: {}", id);
+                        Some(EngineResponse::MacroDeleted(id))
+                    }
+                    Err(e) => {
+                        log::error!(target: "storage", "Macro delete failed: {}", e.message);
+                        Some(EngineResponse::Error(e))
+                    }
+                }
+            }
+            EngineCommand::ToggleMacro(id, enabled) => {
+                match self.toggle_macro(&id, enabled) {
+                    Ok((id, state)) => Some(EngineResponse::MacroToggled(id, state)),
+                    Err(e) => Some(EngineResponse::Error(e)),
+                }
+            }
+            EngineCommand::SearchMacros(query) => {
+                let macros = self.search_macros(&query);
+                Some(EngineResponse::SearchResults(macros))
+            }
+            EngineCommand::GetConfig => {
+                Some(EngineResponse::ConfigLoaded(self.get_config()))
+            }
+            EngineCommand::UpdateConfig(cfg) => {
+                match self.update_config(cfg) {
+                    Ok(new_cfg) => Some(EngineResponse::ConfigUpdated(new_cfg)),
+                    Err(e) => Some(EngineResponse::Error(e)),
+                }
+            }
+            EngineCommand::ExecuteMacro(id) => {
+                match self.execute_macro(&id) {
+                    Ok(_) => None, // Or we could emit a success optionally
+                    Err(e) => Some(EngineResponse::Error(e)),
+                }
+            }
+            EngineCommand::ImportMacros(path) => {
+                match self.import_macros(&path) {
+                    Ok(result) => Some(EngineResponse::ImportComplete(result)),
+                    Err(e) => Some(EngineResponse::Error(e)),
+                }
+            }
+            EngineCommand::ExportMacros(path) => {
+                match self.export_macros(&path) {
+                    Ok(result) => Some(EngineResponse::ExportComplete(result)),
+                    Err(e) => Some(EngineResponse::Error(e)),
+                }
+            }
+            EngineCommand::ReloadMacros => {
+                self.reload_from_storage();
+                Some(EngineResponse::MacrosReloaded)
+            }
+            _ => None,
+        }
+    }
+
+    /// Import macros from a JSON file.
+    pub fn import_macros(&mut self, path: &str) -> Result<ImportResult, EngineError> {
+        let file_path = std::path::Path::new(path);
+        if !file_path.exists() {
+            return Err(EngineError {
+                code: "FILE_NOT_FOUND".into(),
+                message: "Import file not found".into(),
+            });
+        }
+        
+        let (imported_macros, file_warnings) = match json_loader::load_macros(file_path) {
+            Ok(res) => res,
+            Err(e) => return Err(EngineError {
+                code: "INVALID_JSON".into(),
+                message: format!("Failed to parse import file: {}", e),
+            }),
+        };
+
+        if imported_macros.is_empty() {
+            return Err(EngineError {
+                code: "NO_MACROS".into(),
+                message: "No macros found in the file".into(),
+            });
+        }
+
+        let mut imported_count = 0;
+        let mut skipped_count = 0;
+        let mut errors = file_warnings;
+
+        {
+            let mut state = self.state.write().unwrap();
+            let mut to_add = Vec::new();
+
+            for mut macro_data in imported_macros {
+                // Check if trigger is unique
+                if state.trigger_map.contains_key(&macro_data.trigger) {
+                    errors.push(format!("Skipped duplicate trigger: {}", macro_data.trigger));
+                    skipped_count += 1;
+                    continue;
+                }
+                
+                // Generate a new UUID and update timestamps
+                macro_data.id = uuid::Uuid::new_v4().to_string();
+                let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+                macro_data.created_at = now.clone();
+                macro_data.updated_at = now;
+                
+                to_add.push(macro_data);
+            }
+
+            for m in to_add {
+                state.trigger_map.insert(m.trigger.clone(), m.clone());
+                state.id_map.insert(m.id.clone(), m);
+                imported_count += 1;
+            }
+        }
+        
+        if imported_count > 0 {
+            if let Err(e) = self.persist_macros() {
+                return Err(EngineError {
+                    code: "STORAGE_WRITE_ERROR".into(),
+                    message: format!("Failed to save after import: {}", e),
+                });
+            }
+        }
+
+        Ok(ImportResult {
+            imported_count,
+            skipped_count,
+            errors,
+        })
+    }
+
+    /// Export macros to a JSON file.
+    pub fn export_macros(&self, path: &str) -> Result<ExportResult, EngineError> {
+        let state = self.state.read().unwrap();
+        let macros: Vec<Macro> = state.id_map.values().cloned().collect();
+        let exported_count = macros.len() as u32;
+
+        let output = json!({
+            "version": 1,
+            "macros": macros
+        });
+
+        let json_str = match serde_json::to_string_pretty(&output) {
+            Ok(s) => s,
+            Err(e) => return Err(EngineError {
+                code: "SERIALIZATION_ERROR".into(),
+                message: format!("Failed to serialize macros: {}", e),
+            }),
+        };
+
+        if let Err(e) = std::fs::write(path, json_str) {
+            return Err(EngineError {
+                code: "WRITE_ERROR".into(),
+                message: format!("Export failed: {}", e),
+            });
+        }
+
+        Ok(ExportResult {
+            exported_count,
+            file_path: path.to_string(),
+        })
+    }
+
+    /// Reload macros from storage (e.g. after sync)
+    pub fn reload_from_storage(&mut self) {
+        let (loaded_macros, _) = self.storage.load_macros();
+        let mut state = self.state.write().unwrap();
+        state.trigger_map.clear();
+        state.id_map.clear();
+        for m in loaded_macros {
+            state.trigger_map.insert(m.trigger.clone(), m.clone());
+            state.id_map.insert(m.id.clone(), m);
+        }
+    }
+
     // --- Private Helpers ---
 
     fn insert_macro(&mut self, m: Macro) {
-        self.trigger_map.insert(m.trigger.clone(), m.clone());
-        self.id_map.insert(m.id.clone(), m);
+        let mut state = self.state.write().unwrap();
+        state.trigger_map.insert(m.trigger.clone(), m.clone());
+        state.id_map.insert(m.id.clone(), m);
     }
 
     fn persist_macros(&self) -> Result<(), crate::storage::error::StorageError> {
-        let macros: Vec<Macro> = self.id_map.values().cloned().collect();
+        let state = self.state.read().unwrap();
+        let macros: Vec<Macro> = state.id_map.values().cloned().collect();
         self.storage.save_macros(&macros)
     }
 }
