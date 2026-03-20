@@ -29,17 +29,15 @@ pub const SUCCESS: Color = Color::from_rgb(0.29, 0.871, 0.502); // #4ADE80
 pub const ERROR: Color = Color::from_rgb(0.973, 0.443, 0.443); // #F87171
 pub const CONTROL_HOVER: Color = Color::from_rgb(0.165, 0.184, 0.22); // #2A2F38
 
-pub fn run() -> iced::Result {
-    let settings = Settings {
-        window: window::Settings {
-            size: Size::new(1200.0, 800.0),
-            min_size: Some(Size::new(800.0, 500.0)),
-            decorations: false,
-            transparent: true,
-            position: window::Position::Centered,
-            ..window::Settings::default()
-        },
-        ..Settings::default()
+pub fn run(flags: (std::sync::mpsc::Sender<crate::models::engine_commands::EngineCommand>, std::sync::mpsc::Receiver<crate::models::engine_responses::EngineResponse>)) -> iced::Result {
+    let mut settings = Settings::with_flags(flags);
+    settings.window = window::Settings {
+        size: Size::new(1200.0, 800.0),
+        min_size: Some(Size::new(800.0, 500.0)),
+        decorations: false,
+        transparent: true,
+        position: window::Position::Centered,
+        ..window::Settings::default()
     };
     TextMacroApp::run(settings)
 }
@@ -177,7 +175,8 @@ pub struct TextMacroApp {
     macros: Vec<Macro>,
     search_query: String,
     selected_macro_id: Option<String>,
-    _storage: StorageManager,
+    engine_tx: std::sync::mpsc::Sender<crate::models::engine_commands::EngineCommand>,
+    engine_rx: std::sync::mpsc::Receiver<crate::models::engine_responses::EngineResponse>,
     editor_state: EditorState,
     pending_navigation: Option<Box<Message>>,
     show_delete_dialog: bool,
@@ -264,6 +263,11 @@ pub enum Message {
     DismissToast(uuid::Uuid),
     AddToast(ToastType, String),
     TickToasts(std::time::Instant),
+    PollEngine(std::time::Instant),
+    ImportMacrosClicked,
+    ExportMacrosClicked,
+    FilePickedForImport(Option<std::path::PathBuf>),
+    FilePickedForExport(Option<std::path::PathBuf>),
 }
 
 const SIDEBAR_ITEMS: &[(&str, &str)] = &[
@@ -277,14 +281,15 @@ impl Application for TextMacroApp {
     type Executor = executor::Default;
     type Message = Message;
     type Theme = Theme;
-    type Flags = ();
+    type Flags = (std::sync::mpsc::Sender<crate::models::engine_commands::EngineCommand>, std::sync::mpsc::Receiver<crate::models::engine_responses::EngineResponse>);
 
-    fn new(_flags: ()) -> (Self, Command<Message>) {
+    fn new(flags: Self::Flags) -> (Self, Command<Message>) {
+        let (engine_tx, engine_rx) = flags;
         let storage = StorageManager::new().expect("Failed to initialize storage");
         let _ = storage.initialize(); // Ignore warnings
         let (macros, _) = storage.load_macros();
         let (config, _) = storage.load_config();
-        
+
         (
             Self {
                 active_sidebar: 0,
@@ -294,7 +299,8 @@ impl Application for TextMacroApp {
                 macros,
                 search_query: String::new(),
                 selected_macro_id: None,
-                _storage: storage,
+                engine_tx,
+                engine_rx,
                 editor_state: EditorState::default(),
                 pending_navigation: None,
                 show_delete_dialog: false,
@@ -320,7 +326,7 @@ impl Application for TextMacroApp {
     }
 
     fn subscription(&self) -> Subscription<Message> {
-        let subs = vec![
+        let mut subs = vec![
             iced::event::listen_with(|event, _status| match event {
                 IcedEvent::Window(_, WindowEvent::Resized { width, height }) => {
                     Some(Message::WindowResized(width, height))
@@ -330,8 +336,8 @@ impl Application for TextMacroApp {
                 }
                 _ => None,
             }),
+            iced::time::every(std::time::Duration::from_millis(50)).map(Message::PollEngine),
         ];
-        
         Subscription::batch(subs)
     }
 
@@ -354,7 +360,27 @@ impl Application for TextMacroApp {
                 self.window_maximized = !self.window_maximized;
                 window::maximize(window::Id::MAIN, self.window_maximized)
             }
-            Message::CloseClicked => window::close(window::Id::MAIN),
+            Message::CloseClicked => {
+                if self.config.enable_background_service {
+                    log::info!("Minimizing since background service is enabled.");
+                    self.toasts.push(Toast::new("TextMacro is running in the background".into(), ToastType::Info));
+                    let t_id = uuid::Uuid::new_v4();
+                    
+                    // We dispatch a command to dismiss the toast automatically
+                    let dismiss_cmd = Command::perform(async move {
+                        std::thread::sleep(std::time::Duration::from_millis(3000));
+                        t_id
+                    }, Message::DismissToast);
+                    
+                    Command::batch(vec![
+                        window::minimize(window::Id::MAIN, true),
+                        dismiss_cmd,
+                    ])
+                } else {
+                    log::info!("Exiting TextMacro.");
+                    window::close(window::Id::MAIN)
+                }
+            }
             Message::WindowResized(w, _h) => {
                 self.window_width = w as f32;
                 Command::none()
@@ -421,7 +447,7 @@ impl Application for TextMacroApp {
                             self.config.command_palette_shortcut = shortcut;
                             self.is_recording_shortcut = false;
                             self.config_validation_errors.remove("command_palette_shortcut");
-                            let _ = self._storage.save_config(&self.config);
+                            let _ = self.engine_tx.send(crate::models::engine_commands::EngineCommand::UpdateConfig(self.config.clone()));
                         }
                     } else if matches!(key.as_ref(), keyboard::Key::Character(_)) || matches!(key.as_ref(), keyboard::Key::Named(_)) {
                         // User pressed a key without modifier
@@ -621,38 +647,46 @@ impl Application for TextMacroApp {
                 }
 
                 let content_str = self.editor_state.content.text();
-                // We could validate content empty here, but sometimes empty content is okay for event macros.
-                // Let's just create/update the macro
+                
                 if self.editor_state.is_new {
-                    let mut new_macro = Macro::new(self.editor_state.trigger.clone(), content_str);
-                    new_macro.description = self.editor_state.description.clone();
-                    new_macro.enabled = self.editor_state.enabled;
-                    new_macro.category = match self.active_sidebar {
-                        1 => MacroCategory::Prompt,
-                        2 => MacroCategory::Event,
-                        _ => MacroCategory::Text,
+                    let req = crate::models::engine_commands::MacroCreateRequest {
+                        trigger: self.editor_state.trigger.clone(),
+                        content: content_str,
+                        category: match self.active_sidebar {
+                            1 => MacroCategory::Prompt,
+                            2 => MacroCategory::Event,
+                            _ => MacroCategory::Text,
+                        },
+                        action_type: ActionType::InsertText,
+                        description: Some(self.editor_state.description.clone()),
+                        preserve_format: None,
+                        tags: None,
+                        shortcut: None,
+                        event_trigger: None,
                     };
-                    self.selected_macro_id = Some(new_macro.id.clone());
-                    self.macros.push(new_macro);
-                    self.editor_state.is_new = false;
-                    self.editor_state.original_id = self.selected_macro_id.clone();
+                    let _ = self.engine_tx.send(crate::models::engine_commands::EngineCommand::CreateMacro(req));
                 } else {
                     if let Some(id) = &self.editor_state.original_id {
-                        if let Some(m) = self.macros.iter_mut().find(|m| &m.id == id) {
-                            m.trigger = self.editor_state.trigger.clone();
-                            m.description = self.editor_state.description.clone();
-                            m.content = content_str;
-                            m.enabled = self.editor_state.enabled;
-                            m.touch();
-                        }
+                        let req = crate::models::engine_commands::MacroUpdateRequest {
+                            id: id.clone(),
+                            trigger: Some(self.editor_state.trigger.clone()),
+                            description: Some(self.editor_state.description.clone()),
+                            content: Some(content_str),
+                            enabled: Some(self.editor_state.enabled),
+                            category: None,
+                            action_type: None,
+                            preserve_format: None,
+                            tags: None,
+                            shortcut: None,
+                            event_trigger: None,
+                        };
+                        let _ = self.engine_tx.send(crate::models::engine_commands::EngineCommand::UpdateMacro(req));
                     }
                 }
                 
                 self.editor_state.has_unsaved_changes = false;
                 self.editor_state.validation_error = None;
                 
-                let _ = self._storage.save_macros(&self.macros);
-                // Also trigger macro_engine refresh, but this is future phase.
                 Command::none()
             }
             Message::DeleteMacroClick => {
@@ -661,8 +695,7 @@ impl Application for TextMacroApp {
             }
             Message::ConfirmDelete => {
                 if let Some(id) = &self.editor_state.original_id {
-                    self.macros.retain(|m| &m.id != id);
-                    let _ = self._storage.save_macros(&self.macros);
+                    let _ = self.engine_tx.send(crate::models::engine_commands::EngineCommand::DeleteMacro(id.clone()));
                 }
                 self.editor_state = EditorState::default();
                 self.selected_macro_id = None;
@@ -687,12 +720,12 @@ impl Application for TextMacroApp {
             // Settings Implementations
             Message::ToggleRunOnStartup(b) => {
                 self.config.run_on_startup = b;
-                let _ = self._storage.save_config(&self.config);
+                let _ = self.engine_tx.send(crate::models::engine_commands::EngineCommand::UpdateConfig(self.config.clone()));
                 Command::none()
             }
             Message::ToggleBackgroundService(b) => {
                 self.config.enable_background_service = b;
-                let _ = self._storage.save_config(&self.config);
+                let _ = self.engine_tx.send(crate::models::engine_commands::EngineCommand::UpdateConfig(self.config.clone()));
                 Command::none()
             }
             Message::TriggerPrefixChanged(val) => {
@@ -701,7 +734,7 @@ impl Application for TextMacroApp {
                     self.config_validation_errors.insert("trigger_prefix".into(), "Trigger prefix is required".into());
                 } else {
                     self.config_validation_errors.remove("trigger_prefix");
-                    let _ = self._storage.save_config(&self.config);
+                    let _ = self.engine_tx.send(crate::models::engine_commands::EngineCommand::UpdateConfig(self.config.clone()));
                 }
                 Command::none()
             }
@@ -710,27 +743,27 @@ impl Application for TextMacroApp {
             }
             Message::ToggleEditorFontMonospace(b) => {
                 self.config.editor_font_monospace = b;
-                let _ = self._storage.save_config(&self.config);
+                let _ = self.engine_tx.send(crate::models::engine_commands::EngineCommand::UpdateConfig(self.config.clone()));
                 Command::none()
             }
             Message::TogglePreserveFormatting(b) => {
                 self.config.preserve_formatting = b;
-                let _ = self._storage.save_config(&self.config);
+                let _ = self.engine_tx.send(crate::models::engine_commands::EngineCommand::UpdateConfig(self.config.clone()));
                 Command::none()
             }
             Message::ToggleMarkdownSupport(b) => {
                 self.config.markdown_support = b;
-                let _ = self._storage.save_config(&self.config);
+                let _ = self.engine_tx.send(crate::models::engine_commands::EngineCommand::UpdateConfig(self.config.clone()));
                 Command::none()
             }
             Message::ThemeSelected(val) => {
                 self.config.theme = val;
-                let _ = self._storage.save_config(&self.config);
+                let _ = self.engine_tx.send(crate::models::engine_commands::EngineCommand::UpdateConfig(self.config.clone()));
                 Command::none()
             }
             Message::UIDensitySelected(val) => {
                 self.config.ui_density = val;
-                let _ = self._storage.save_config(&self.config);
+                let _ = self.engine_tx.send(crate::models::engine_commands::EngineCommand::UpdateConfig(self.config.clone()));
                 Command::none()
             }
             Message::StartShortcutRecording => {
@@ -790,13 +823,14 @@ impl Application for TextMacroApp {
             }
             Message::ToggleMacroEnabledReq(id) => {
                 let mut enabled_str = None;
-                if let Some(m) = self.macros.iter_mut().find(|m| m.id == id) {
-                    m.enabled = !m.enabled;
-                    enabled_str = Some(if m.enabled { "Macro enabled".to_string() } else { "Macro disabled".to_string() });
+                if let Some(m) = self.macros.iter().find(|m| m.id == id) {
+                    let _ = self.engine_tx.send(crate::models::engine_commands::EngineCommand::ToggleMacro(id.clone(), !m.enabled));
+                    // We don't modify locally; we let PollEngine handle it. 
+                    // But we can show toast for optimism or wait for engine. Let's do optimism toast.
+                    enabled_str = Some(if !m.enabled { "Macro enabled".to_string() } else { "Macro disabled".to_string() });
                 }
                 
                 if let Some(s) = enabled_str {
-                    let _ = self._storage.save_macros(&self.macros);
                     let m_id = id.clone();
                     self.toasts.push(Toast::new(s, ToastType::Info));
                     return Command::perform(async move {
@@ -808,31 +842,36 @@ impl Application for TextMacroApp {
             }
             Message::DuplicateMacroReq(id) => {
                 if let Some(m) = self.macros.iter().find(|m| m.id == id).cloned() {
-                    let mut duplicate = m.clone();
-                    let new_id = uuid::Uuid::new_v4();
-                    duplicate.id = new_id.to_string();
-                    duplicate.trigger = format!("{}-copy", m.trigger);
-                    duplicate.created_at = chrono::Utc::now().to_rfc3339();
-                    duplicate.updated_at = duplicate.created_at.clone();
-                    self.macros.push(duplicate);
-                    let _ = self._storage.save_macros(&self.macros);
-                    self.toasts.push(Toast::new("Macro duplicated".into(), ToastType::Success));
+                    let req = crate::models::engine_commands::MacroCreateRequest {
+                        trigger: format!("{}-copy", m.trigger),
+                        content: m.content.clone(),
+                        category: m.category.clone(),
+                        action_type: m.action_type.clone(),
+                        description: Some(m.description.clone()),
+                        preserve_format: Some(m.preserve_format),
+                        tags: Some(m.tags.clone()),
+                        shortcut: m.shortcut.clone(),
+                        event_trigger: m.event_trigger.clone(),
+                    };
+                    let _ = self.engine_tx.send(crate::models::engine_commands::EngineCommand::CreateMacro(req));
+                    
+                    self.toasts.push(Toast::new("Macro duplicate requested".into(), ToastType::Success));
+                    let t_id = uuid::Uuid::new_v4();
                     return Command::perform(async move {
                         std::thread::sleep(std::time::Duration::from_millis(3000));
-                        new_id
+                        t_id
                     }, Message::DismissToast);
                 }
                 Command::none()
             }
             Message::RequestDeleteMacroReq(id) => {
-                self.macros.retain(|m| m.id != id);
-                let _ = self._storage.save_macros(&self.macros);
+                let _ = self.engine_tx.send(crate::models::engine_commands::EngineCommand::DeleteMacro(id.clone()));
                 if self.selected_macro_id.as_deref() == Some(id.as_str()) {
                     self.selected_macro_id = None;
                     self.editor_state = EditorState::default();
                 }
                 let t_id = uuid::Uuid::new_v4();
-                let mut t = Toast::new("Macro deleted".into(), ToastType::Warning);
+                let mut t = Toast::new("Macro deletion requested".into(), ToastType::Warning);
                 t.id = t_id.clone();
                 self.toasts.push(t);
                 return Command::perform(async move {
@@ -848,10 +887,99 @@ impl Application for TextMacroApp {
                 self.toasts.push(Toast::new(msg, t_type));
                 Command::none()
             }
+            Message::PollEngine(_) => {
+                while let Ok(response) = self.engine_rx.try_recv() {
+                    match response {
+                        crate::models::engine_responses::EngineResponse::MacroCreated(m) => {
+                            self.macros.push(m.clone());
+                            self.toasts.push(Toast::new("Macro Created".into(), ToastType::Success));
+                        }
+                        crate::models::engine_responses::EngineResponse::MacroUpdated(m) => {
+                            if let Some(existing) = self.macros.iter_mut().find(|ext| ext.id == m.id) {
+                                *existing = m;
+                            }
+                            self.toasts.push(Toast::new("Macro Updated".into(), ToastType::Success));
+                        }
+                        crate::models::engine_responses::EngineResponse::MacroDeleted(id) => {
+                            self.macros.retain(|m| m.id != id);
+                            if self.selected_macro_id == Some(id) {
+                                self.selected_macro_id = None;
+                                self.editor_state.is_active = false;
+                            }
+                            self.toasts.push(Toast::new("Macro Deleted".into(), ToastType::Info));
+                        }
+                        crate::models::engine_responses::EngineResponse::MacroToggled(id, state) => {
+                            if let Some(existing) = self.macros.iter_mut().find(|ext| ext.id == id) {
+                                existing.enabled = state;
+                                if self.selected_macro_id == Some(id) {
+                                    self.editor_state.enabled = state;
+                                }
+                            }
+                        }
+                        crate::models::engine_responses::EngineResponse::Error(err) => {
+                            self.toasts.push(Toast::new(format!("Error: {}", err.message), ToastType::Error));
+                        }
+                        crate::models::engine_responses::EngineResponse::ImportComplete(res) => {
+                            self.toasts.push(Toast::new(format!("Imported {} macros ({} skipped)", res.imported_count, res.skipped_count), ToastType::Success));
+                            // Request refresh of macros
+                            let _ = self.engine_tx.send(crate::models::engine_commands::EngineCommand::SearchMacros("".into()));
+                        }
+                        crate::models::engine_responses::EngineResponse::ExportComplete(res) => {
+                            self.toasts.push(Toast::new(format!("Exported {} macros successfully", res.exported_count), ToastType::Success));
+                        }
+                        crate::models::engine_responses::EngineResponse::SearchResults(loaded_macros) => {
+                            // If it's a full reload (like after import when search_query is empty, or during active search)
+                            if self.search_query.is_empty() {
+                                // Full state update
+                                self.macros = loaded_macros;
+                            } else {
+                                // Don't wipe everything if the user actually typed a query, though technically it's fine 
+                                // since the UI re-filters based on self.macros and the active tab anyway.
+                                // Actually wait, if the UI natively handles search through standard filtering of self.macros,
+                                // we should just replace self.macros completely here.
+                                self.macros = loaded_macros;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                Command::none()
+            }
             Message::TickToasts(_) => {
                 self.toasts.retain(|t| t.created_at.elapsed() < t.duration);
                 Command::none()
             }
+            Message::ImportMacrosClicked => {
+                Command::perform(async {
+                    let file = rfd::AsyncFileDialog::new()
+                        .add_filter("JSON Files", &["json"])
+                        .pick_file()
+                        .await;
+                    file.map(|f| f.path().to_path_buf())
+                }, Message::FilePickedForImport)
+            }
+            Message::ExportMacrosClicked => {
+                Command::perform(async {
+                    let file = rfd::AsyncFileDialog::new()
+                        .add_filter("JSON Files", &["json"])
+                        .set_file_name("textmacro_export.json")
+                        .save_file()
+                        .await;
+                    file.map(|f| f.path().to_path_buf())
+                }, Message::FilePickedForExport)
+            }
+            Message::FilePickedForImport(Some(path)) => {
+                let path_str = path.to_string_lossy().to_string();
+                let _ = self.engine_tx.send(crate::models::engine_commands::EngineCommand::ImportMacros(path_str));
+                Command::none()
+            }
+            Message::FilePickedForImport(None) => Command::none(),
+            Message::FilePickedForExport(Some(path)) => {
+                let path_str = path.to_string_lossy().to_string();
+                let _ = self.engine_tx.send(crate::models::engine_commands::EngineCommand::ExportMacros(path_str));
+                Command::none()
+            }
+            Message::FilePickedForExport(None) => Command::none(),
         }
     }
 

@@ -170,6 +170,16 @@ pub fn view<'a>(
     ]
     .spacing(16);
 
+    let data_group = column![
+        group_title("Data Management"),
+        row![
+            button("Import Macros").on_press(Message::ImportMacrosClicked).padding(8),
+            Space::new(16.0, 0.0),
+            button("Export Macros").on_press(Message::ExportMacrosClicked).padding(8),
+        ]
+    ]
+    .spacing(16);
+
     // Assembly
     let content = column![
         text("Settings").size(24).style(theme::Text::Color(TEXT_PRIMARY)),
@@ -178,6 +188,7 @@ pub fn view<'a>(
         editor_group,
         shortcuts_group,
         appearance_group,
+        data_group,
     ]
     .spacing(32)
     .padding(32)
