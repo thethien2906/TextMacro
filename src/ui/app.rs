@@ -31,9 +31,10 @@ pub const CONTROL_HOVER: Color = Color::from_rgb(0.165, 0.184, 0.22); // #2A2F38
 
 pub fn run(flags: (std::sync::mpsc::Sender<crate::models::engine_commands::EngineCommand>, std::sync::mpsc::Receiver<crate::models::engine_responses::EngineResponse>)) -> iced::Result {
     let mut settings = Settings::with_flags(flags);
+    settings.default_font = Font::with_name("Segoe UI");
     settings.window = window::Settings {
-        size: Size::new(1200.0, 800.0),
-        min_size: Some(Size::new(800.0, 500.0)),
+        size: Size::new(1000.0, 700.0),
+        min_size: Some(Size::new(700.0, 450.0)),
         decorations: false,
         transparent: true,
         position: window::Position::Centered,
@@ -271,10 +272,10 @@ pub enum Message {
 }
 
 const SIDEBAR_ITEMS: &[(&str, &str)] = &[
-    ("⚡", "Macros"),
-    ("📄", "Prompts"),
-    ("🕐", "Events"),
-    ("⚙️", "Settings"),
+    ("::", "Macros"),
+    (">>", "Prompts"),
+    ("@@", "Events"),
+    ("##", "Settings"),
 ];
 
 impl Application for TextMacroApp {
@@ -326,7 +327,7 @@ impl Application for TextMacroApp {
     }
 
     fn subscription(&self) -> Subscription<Message> {
-        let mut subs = vec![
+        let subs = vec![
             iced::event::listen_with(|event, _status| match event {
                 IcedEvent::Window(_, WindowEvent::Resized { width, height }) => {
                     Some(Message::WindowResized(width, height))
@@ -990,19 +991,19 @@ impl Application for TextMacroApp {
         let sidebar_width = if is_mobile || is_collapsed { 56.0 } else { 220.0 };
 
         // Title bar controls
-        let btn_minimize = button(text("─").size(16).horizontal_alignment(alignment::Horizontal::Center))
+        let btn_minimize = button(text("-").size(20).horizontal_alignment(alignment::Horizontal::Center))
             .width(Length::Fixed(46.0))
             .height(Length::Fill)
             .style(theme::Button::custom(WindowControlStyle(false)))
             .on_press(Message::MinimizeClicked);
 
-        let btn_maximize = button(text(if self.window_maximized { "❐" } else { "□" }).size(16).horizontal_alignment(alignment::Horizontal::Center))
+        let btn_maximize = button(text(if self.window_maximized { "[ ]" } else { "[]" }).size(14).horizontal_alignment(alignment::Horizontal::Center))
             .width(Length::Fixed(46.0))
             .height(Length::Fill)
             .style(theme::Button::custom(WindowControlStyle(false)))
             .on_press(Message::MaximizeClicked);
 
-        let btn_close = button(text("✕").size(16).horizontal_alignment(alignment::Horizontal::Center))
+        let btn_close = button(text("x").size(18).horizontal_alignment(alignment::Horizontal::Center))
             .width(Length::Fixed(46.0))
             .height(Length::Fill)
             .style(theme::Button::custom(WindowControlStyle(true)))

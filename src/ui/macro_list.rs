@@ -38,7 +38,7 @@ pub fn view<'a>(
     search_query: &'a str,
     selected_macro_id: Option<&'a str>,
 ) -> Element<'a, Message> {
-    let search_input = text_input("🔍  Search macros...", search_query)
+    let search_input = text_input(">>  Search macros...", search_query)
         .on_input(Message::SearchQueryChanged)
         .padding(10)
         .size(14);
