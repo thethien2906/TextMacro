@@ -6,7 +6,7 @@ use uuid::Uuid;
 
 use crate::models::macro_model::Macro;
 use crate::ui::app::{
-    Message, BACKGROUND, CARD, BORDER, ACCENT, TEXT_PRIMARY, TEXT_SECONDARY, SUCCESS, ERROR, PANEL
+    Message, BACKGROUND, CARD, ACCENT, TEXT_PRIMARY, TEXT_SECONDARY, SUCCESS, ERROR
 };
 
 #[derive(Clone, Debug, PartialEq)]

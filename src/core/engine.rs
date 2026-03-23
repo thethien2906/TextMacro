@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
-use std::thread;
 
 use crate::core::action_executor::ActionExecutor;
 use crate::models::config::Config;

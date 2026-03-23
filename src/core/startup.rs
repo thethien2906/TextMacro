@@ -13,7 +13,6 @@ pub fn set_run_on_startup(enable: bool) {
     let auto = AutoLaunchBuilder::new()
         .set_app_name(app_name)
         .set_app_path(&app_path)
-        .set_use_launch_agent(true)
         .build()
         .unwrap();
 

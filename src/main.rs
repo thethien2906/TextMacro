@@ -9,7 +9,7 @@ pub mod storage;
 pub mod ui;
 
 use simplelog::{WriteLogger, TermLogger, CombinedLogger, LevelFilter, ColorChoice, TerminalMode};
-use std::fs::{File, OpenOptions};
+use std::fs::OpenOptions;
 
 use crate::storage::macro_repository::StorageManager;
 use crate::core::engine::Engine;

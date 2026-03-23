@@ -1,7 +1,7 @@
 use iced::widget::{button, column, container, horizontal_space, row, text, text_input, Space, toggler, text_editor};
 use iced::{alignment, theme, Background, Border, Color, Element, Length, Theme};
 
-use crate::ui::app::{Message, EditorState, ACCENT, BACKGROUND, BORDER, CARD, ERROR, PANEL, SUCCESS, TEXT_PRIMARY, TEXT_SECONDARY, CONTROL_HOVER};
+use crate::ui::app::{Message, EditorState, ACCENT, BACKGROUND, BORDER, CARD, ERROR, PANEL, TEXT_PRIMARY, TEXT_SECONDARY};
 
 struct EditorInputStyle {
     is_invalid: bool,
