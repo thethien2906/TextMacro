@@ -52,10 +52,18 @@ fn main() -> iced::Result {
     setup_logging();
     log::info!("Starting TextMacro engine...");
 
+    let tray_menu = tray_icon::menu::Menu::new();
+    let _ = tray_menu.append_items(&[
+        &tray_icon::menu::MenuItem::with_id("show", "Show", true, None),
+        &tray_icon::menu::PredefinedMenuItem::separator(),
+        &tray_icon::menu::MenuItem::with_id("quit", "Exit", true, None),
+    ]);
+
     let tray_icon_result = tray_icon::TrayIconBuilder::new()
         .with_tooltip("TextMacro")
         // Just a simple transparent 16x16 icon to avoid panic
         .with_icon(tray_icon::Icon::from_rgba(vec![255; 4 * 16 * 16], 16, 16).unwrap())
+        .with_menu(Box::new(tray_menu))
         .build();
         
     let _tray_icon = match tray_icon_result {

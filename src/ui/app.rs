@@ -6,6 +6,8 @@ use iced::{
     Font, Length, Settings, Size, Subscription, Theme,
 };
 use iced::window::Event as WindowEvent;
+use iced::window::Mode;
+use iced::futures::SinkExt;
 use iced::keyboard;
 use iced::keyboard::key::Named;
 use iced::Event as IcedEvent;
@@ -269,6 +271,8 @@ pub enum Message {
     ExportMacrosClicked,
     FilePickedForImport(Option<std::path::PathBuf>),
     FilePickedForExport(Option<std::path::PathBuf>),
+    TrayMenuEvent(tray_icon::menu::MenuEvent),
+    TrayIconEvent(tray_icon::TrayIconEvent),
 }
 
 const SIDEBAR_ITEMS: &[(&str, &str)] = &[
@@ -277,6 +281,28 @@ const SIDEBAR_ITEMS: &[(&str, &str)] = &[
     ("@@", "Events"),
     ("##", "Settings"),
 ];
+
+impl TextMacroApp {
+    fn tray_events() -> Subscription<Message> {
+        iced::subscription::channel(
+            std::any::TypeId::of::<()>(),
+            100,
+            |mut output| async move {
+                let menu_receiver = tray_icon::menu::MenuEvent::receiver();
+                let icon_receiver = tray_icon::TrayIconEvent::receiver();
+                loop {
+                    while let Ok(event) = menu_receiver.try_recv() {
+                        let _ = output.send(Message::TrayMenuEvent(event)).await;
+                    }
+                    while let Ok(event) = icon_receiver.try_recv() {
+                        let _ = output.send(Message::TrayIconEvent(event)).await;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                }
+            }
+        )
+    }
+}
 
 impl Application for TextMacroApp {
     type Executor = executor::Default;
@@ -338,6 +364,7 @@ impl Application for TextMacroApp {
                 _ => None,
             }),
             iced::time::every(std::time::Duration::from_millis(50)).map(Message::PollEngine),
+            Self::tray_events(),
         ];
         Subscription::batch(subs)
     }
@@ -374,7 +401,7 @@ impl Application for TextMacroApp {
                     }, Message::DismissToast);
                     
                     Command::batch(vec![
-                        window::minimize(window::Id::MAIN, true),
+                        window::change_mode(window::Id::MAIN, Mode::Hidden),
                         dismiss_cmd,
                     ])
                 } else {
@@ -797,6 +824,29 @@ impl Application for TextMacroApp {
             Message::CommandPaletteSelectDown => {
                 self.command_palette.selected_index += 1;
                 Command::none()
+            }
+            Message::TrayMenuEvent(event) => {
+                if event.id == "show" {
+                    return Command::batch(vec![
+                        window::change_mode(window::Id::MAIN, Mode::Windowed),
+                        window::gain_focus(window::Id::MAIN),
+                    ]);
+                } else if event.id == "quit" {
+                    return window::close(window::Id::MAIN);
+                }
+                Command::none()
+            }
+            Message::TrayIconEvent(event) => {
+                match event {
+                    tray_icon::TrayIconEvent::Click { button: tray_icon::MouseButton::Left, .. } |
+                    tray_icon::TrayIconEvent::DoubleClick { button: tray_icon::MouseButton::Left, .. } => {
+                        Command::batch(vec![
+                            window::change_mode(window::Id::MAIN, Mode::Windowed),
+                            window::gain_focus(window::Id::MAIN),
+                        ])
+                    }
+                    _ => Command::none()
+                }
             }
             Message::CommandPaletteExecute => {
                 let lower_query = self.command_palette.query.to_lowercase();
