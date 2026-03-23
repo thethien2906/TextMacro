@@ -31,14 +31,15 @@ pub const SUCCESS: Color = Color::from_rgb(0.29, 0.871, 0.502); // #4ADE80
 pub const ERROR: Color = Color::from_rgb(0.973, 0.443, 0.443); // #F87171
 pub const CONTROL_HOVER: Color = Color::from_rgb(0.165, 0.184, 0.22); // #2A2F38
 
-pub fn run(flags: (std::sync::mpsc::Sender<crate::models::engine_commands::EngineCommand>, std::sync::mpsc::Receiver<crate::models::engine_responses::EngineResponse>)) -> iced::Result {
-    let mut settings = Settings::with_flags(flags);
+pub fn run(flags: (std::sync::mpsc::Sender<crate::models::engine_commands::EngineCommand>, std::sync::mpsc::Receiver<crate::models::engine_responses::EngineResponse>), rgba: Vec<u8>, width: u32, height: u32) -> iced::Result {
+    let mut settings = Settings::with_flags((flags, rgba.clone(), width, height));
     settings.default_font = Font::with_name("Segoe UI");
     settings.window = window::Settings {
         size: Size::new(1000.0, 700.0),
         min_size: Some(Size::new(700.0, 450.0)),
         decorations: false,
         transparent: true,
+        icon: Some(window::icon::from_rgba(rgba, width, height).expect("Failed to create icon")),
         position: window::Position::Centered,
         ..window::Settings::default()
     };
@@ -308,10 +309,10 @@ impl Application for TextMacroApp {
     type Executor = executor::Default;
     type Message = Message;
     type Theme = Theme;
-    type Flags = (std::sync::mpsc::Sender<crate::models::engine_commands::EngineCommand>, std::sync::mpsc::Receiver<crate::models::engine_responses::EngineResponse>);
+    type Flags = ((std::sync::mpsc::Sender<crate::models::engine_commands::EngineCommand>, std::sync::mpsc::Receiver<crate::models::engine_responses::EngineResponse>), Vec<u8>, u32, u32);
 
     fn new(flags: Self::Flags) -> (Self, Command<Message>) {
-        let (engine_tx, engine_rx) = flags;
+        let ((engine_tx, engine_rx), _rgba, _width, _height) = flags;
         let storage = StorageManager::new().expect("Failed to initialize storage");
         let _ = storage.initialize(); // Ignore warnings
         let (macros, _) = storage.load_macros();
