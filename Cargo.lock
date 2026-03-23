@@ -3645,6 +3645,7 @@ dependencies = [
  "serde",
  "serde_json",
  "simplelog",
+ "tokio",
  "tray-icon",
  "uuid",
 ]
