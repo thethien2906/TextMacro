@@ -52,6 +52,15 @@ fn main() -> iced::Result {
     setup_logging();
     log::info!("Starting TextMacro engine...");
 
+    let icon_path = std::env::current_dir().unwrap().join("assets").join("logo.png");
+    let (rgba, width, height) = if icon_path.exists() {
+        let image = image::open(&icon_path).expect("Failed to open logo").to_rgba8();
+        let (w, h) = image.dimensions();
+        (image.into_raw(), w, h)
+    } else {
+        (vec![255; 4 * 16 * 16], 16, 16)
+    };
+
     let tray_menu = tray_icon::menu::Menu::new();
     let _ = tray_menu.append_items(&[
         &tray_icon::menu::MenuItem::with_id("show", "Show", true, None),
@@ -61,8 +70,7 @@ fn main() -> iced::Result {
 
     let tray_icon_result = tray_icon::TrayIconBuilder::new()
         .with_tooltip("TextMacro")
-        // Just a simple transparent 16x16 icon to avoid panic
-        .with_icon(tray_icon::Icon::from_rgba(vec![255; 4 * 16 * 16], 16, 16).unwrap())
+        .with_icon(tray_icon::Icon::from_rgba(rgba.clone(), width, height).unwrap())
         .with_menu(Box::new(tray_menu))
         .build();
         
@@ -76,5 +84,5 @@ fn main() -> iced::Result {
 
     let storage = StorageManager::new().expect("Failed to initialize storage");
     let (tx, rx) = Engine::spawn(storage);
-    ui::app::run((tx, rx))
+    ui::app::run((tx, rx), rgba, width, height)
 }
