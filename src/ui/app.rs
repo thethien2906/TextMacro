@@ -39,6 +39,7 @@ pub const CONTROL_HOVER: Color = Color::from_rgb(0.125, 0.125, 0.122);      // #
 
 pub fn run(flags: (std::sync::mpsc::Sender<crate::models::engine_commands::EngineCommand>, std::sync::mpsc::Receiver<crate::models::engine_responses::EngineResponse>), rgba: Vec<u8>, width: u32, height: u32) -> iced::Result {
     let mut settings = Settings::with_flags((flags, rgba.clone(), width, height));
+    settings.fonts.push(std::borrow::Cow::Borrowed(iced_aw::BOOTSTRAP_FONT_BYTES));
     settings.default_font = Font::with_name("Segoe UI");
     settings.window = window::Settings {
         size: Size::new(1000.0, 700.0),
@@ -312,10 +313,10 @@ pub enum Message {
 }
 
 const SIDEBAR_ITEMS: &[(&str, &str)] = &[
-    ("▣", "Macros"),
-    ("☰", "Prompts"),
-    ("⚡", "Events"),
-    ("⚙", "Settings"),
+    ("\u{F3FB}", "Macros"),
+    ("\u{F24F}", "Prompts"),
+    ("\u{F46C}", "Events"),
+    ("\u{F3E2}", "Settings"),
 ];
 
 impl TextMacroApp {
@@ -1077,19 +1078,20 @@ impl Application for TextMacroApp {
         let sidebar_width = if is_mobile || is_collapsed { 56.0 } else { 240.0 };
 
         // Title bar controls
-        let btn_minimize = button(text("-").size(20).horizontal_alignment(alignment::Horizontal::Center))
+        let btn_minimize = button(text("\u{F2F3}").font(iced_aw::BOOTSTRAP_FONT).size(14).horizontal_alignment(alignment::Horizontal::Center))
             .width(Length::Fixed(46.0))
             .height(Length::Fill)
             .style(theme::Button::custom(WindowControlStyle(false)))
             .on_press(Message::MinimizeClicked);
 
-        let btn_maximize = button(text(if self.window_maximized { "[ ]" } else { "[]" }).size(14).horizontal_alignment(alignment::Horizontal::Center))
+        let max_icon = if self.window_maximized { "\u{F663}" } else { "\u{F55F}" }; // window-stack / square
+        let btn_maximize = button(text(max_icon).font(iced_aw::BOOTSTRAP_FONT).size(12).horizontal_alignment(alignment::Horizontal::Center))
             .width(Length::Fixed(46.0))
             .height(Length::Fill)
             .style(theme::Button::custom(WindowControlStyle(false)))
             .on_press(Message::MaximizeClicked);
 
-        let btn_close = button(text("x").size(18).horizontal_alignment(alignment::Horizontal::Center))
+        let btn_close = button(text("\u{F62D}").font(iced_aw::BOOTSTRAP_FONT).size(16).horizontal_alignment(alignment::Horizontal::Center))
             .width(Length::Fixed(46.0))
             .height(Length::Fill)
             .style(theme::Button::custom(WindowControlStyle(true)))
@@ -1128,7 +1130,9 @@ impl Application for TextMacroApp {
             let is_active = self.active_sidebar == idx;
             let is_focused = self.focused_sidebar == Some(idx);
             
-            let mut item_row = row![text(*icon).size(16)].align_items(alignment::Alignment::Center);
+            let mut item_row = row![
+                text(*icon).size(16).font(iced_aw::BOOTSTRAP_FONT)
+            ].align_items(alignment::Alignment::Center);
 
             if !is_collapsed && !is_mobile {
                 item_row = item_row.push(horizontal_space().width(Length::Fixed(12.0)));
