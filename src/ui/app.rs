@@ -1078,20 +1078,20 @@ impl Application for TextMacroApp {
         let sidebar_width = if is_mobile || is_collapsed { 56.0 } else { 240.0 };
 
         // Title bar controls
-        let btn_minimize = button(text("\u{F2F3}").font(iced_aw::BOOTSTRAP_FONT).size(14).horizontal_alignment(alignment::Horizontal::Center))
+        let btn_minimize = button(text("\u{F63B}").font(iced_aw::BOOTSTRAP_FONT).size(14).horizontal_alignment(alignment::Horizontal::Center))
             .width(Length::Fixed(46.0))
             .height(Length::Fill)
             .style(theme::Button::custom(WindowControlStyle(false)))
             .on_press(Message::MinimizeClicked);
 
-        let max_icon = if self.window_maximized { "\u{F663}" } else { "\u{F55F}" }; // window-stack / square
+        let max_icon = if self.window_maximized { "\u{F6D2}" } else { "\u{F584}" }; // WindowStack / Square
         let btn_maximize = button(text(max_icon).font(iced_aw::BOOTSTRAP_FONT).size(12).horizontal_alignment(alignment::Horizontal::Center))
             .width(Length::Fixed(46.0))
             .height(Length::Fill)
             .style(theme::Button::custom(WindowControlStyle(false)))
             .on_press(Message::MaximizeClicked);
 
-        let btn_close = button(text("\u{F62D}").font(iced_aw::BOOTSTRAP_FONT).size(16).horizontal_alignment(alignment::Horizontal::Center))
+        let btn_close = button(text("\u{F62A}").font(iced_aw::BOOTSTRAP_FONT).size(16).horizontal_alignment(alignment::Horizontal::Center))
             .width(Length::Fixed(46.0))
             .height(Length::Fill)
             .style(theme::Button::custom(WindowControlStyle(true)))

@@ -388,7 +388,7 @@ pub fn view<'a>(state: &'a EditorState, show_delete_dialog: bool, editor_font_mo
         } else {
             let delete_btn = button(
                 row![
-                    text("\u{F625}").font(iced_aw::BOOTSTRAP_FONT).size(13),
+                    text("\u{F5DD}").font(iced_aw::BOOTSTRAP_FONT).size(13),
                     Space::new(4.0, 0.0),
                     text("Delete").size(13),
                 ].align_items(alignment::Alignment::Center)
