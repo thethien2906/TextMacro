@@ -20,16 +20,22 @@ use crate::ui::macro_editor;
 use crate::ui::settings_panel;
 use crate::ui::overlays::{Toast, ToastType, CommandPaletteState};
 use iced::widget::text_editor;
-pub const BACKGROUND: Color = Color::from_rgb(0.059, 0.067, 0.082); // #0F1115
-pub const PANEL: Color = Color::from_rgb(0.086, 0.102, 0.13); // #161A21
-pub const CARD: Color = Color::from_rgb(0.118, 0.137, 0.169); // #1E232B
-pub const BORDER: Color = Color::from_rgb(0.165, 0.184, 0.22); // #2A2F38
-pub const ACCENT: Color = Color::from_rgb(0.486, 0.549, 1.0); // #7C8CFF
-pub const TEXT_PRIMARY: Color = Color::from_rgb(0.902, 0.918, 0.949); // #E6EAF2
-pub const TEXT_SECONDARY: Color = Color::from_rgb(0.608, 0.639, 0.698); // #9BA3B2
-pub const SUCCESS: Color = Color::from_rgb(0.29, 0.871, 0.502); // #4ADE80
-pub const ERROR: Color = Color::from_rgb(0.973, 0.443, 0.443); // #F87171
-pub const CONTROL_HOVER: Color = Color::from_rgb(0.165, 0.184, 0.22); // #2A2F38
+// Editorial Macro Suite — Design System Color Tokens
+pub const BACKGROUND: Color = Color::from_rgb(0.055, 0.055, 0.055);          // #0e0e0e  surface
+pub const PANEL: Color = Color::from_rgb(0.075, 0.075, 0.075);              // #131313  surface-container-low
+pub const CARD: Color = Color::from_rgb(0.125, 0.125, 0.122);               // #20201f  surface-container-high
+pub const SURFACE_HIGHEST: Color = Color::from_rgb(0.149, 0.149, 0.149);    // #262626  surface-container-highest
+pub const SURFACE_BRIGHT: Color = Color::from_rgb(0.173, 0.173, 0.173);     // #2c2c2c  surface-bright
+pub const BORDER: Color = Color::from_rgba(0.282, 0.282, 0.278, 0.15);      // #484847 at 15% — ghost border
+pub const ACCENT: Color = Color::from_rgb(0.639, 0.651, 1.0);               // #a3a6ff  primary (Electric Indigo)
+pub const ACCENT_DIM: Color = Color::from_rgb(0.361, 0.373, 0.992);         // #5c5ffd  primary-dim
+pub const SECONDARY: Color = Color::from_rgb(0.635, 0.557, 0.988);          // #a28efc  secondary (Muted lavender)
+pub const TEXT_PRIMARY: Color = Color::from_rgb(1.0, 1.0, 1.0);             // #ffffff  on-surface
+pub const TEXT_SECONDARY: Color = Color::from_rgb(0.678, 0.667, 0.667);     // #adaaaa  on-surface-variant
+pub const SUCCESS: Color = Color::from_rgb(0.196, 0.784, 0.325);            // #32C853  emerald-500
+pub const ERROR: Color = Color::from_rgb(1.0, 0.431, 0.518);                // #ff6e84  error
+pub const ERROR_DIM: Color = Color::from_rgb(0.843, 0.2, 0.341);            // #d73357  error-dim
+pub const CONTROL_HOVER: Color = Color::from_rgb(0.125, 0.125, 0.122);      // #20201f  surface-container-high
 
 pub fn run(flags: (std::sync::mpsc::Sender<crate::models::engine_commands::EngineCommand>, std::sync::mpsc::Receiver<crate::models::engine_responses::EngineResponse>), rgba: Vec<u8>, width: u32, height: u32) -> iced::Result {
     let mut settings = Settings::with_flags((flags, rgba.clone(), width, height));
@@ -53,6 +59,11 @@ impl container::StyleSheet for MainContainerStyle {
         container::Appearance {
             background: Some(Background::Color(BACKGROUND)),
             text_color: Some(TEXT_PRIMARY),
+            border: Border {
+                color: Color::TRANSPARENT,
+                width: 0.0,
+                radius: 0.0.into(),
+            },
             ..Default::default()
         }
     }
@@ -65,8 +76,8 @@ impl container::StyleSheet for SidebarStyle {
         container::Appearance {
             background: Some(Background::Color(PANEL)),
             border: Border {
-                color: BORDER,
-                width: 1.0,
+                color: Color::TRANSPARENT,
+                width: 0.0,
                 radius: 0.0.into(),
             },
             ..Default::default()
@@ -90,7 +101,12 @@ impl container::StyleSheet for AccentBarStyle {
     type Style = Theme;
     fn appearance(&self, _style: &Self::Style) -> container::Appearance {
         container::Appearance {
-            background: Some(Background::Color(ACCENT)),
+            background: Some(Background::Color(Color::from_rgb(0.388, 0.408, 0.98))),  // indigo-500 tint
+            border: Border {
+                color: Color::TRANSPARENT,
+                width: 0.0,
+                radius: 2.0.into(),
+            },
             ..Default::default()
         }
     }
@@ -118,8 +134,8 @@ impl container::StyleSheet for CenterPanelStyle {
         container::Appearance {
             background: Some(Background::Color(BACKGROUND)),
             border: Border {
-                color: BORDER,
-                width: 1.0,
+                color: Color::TRANSPARENT,
+                width: 0.0,
                 radius: 0.0.into(),
             },
             ..Default::default()
@@ -154,10 +170,25 @@ struct SidebarItemButtonStyle {
 impl button::StyleSheet for SidebarItemButtonStyle {
     type Style = Theme;
     fn active(&self, _style: &Self::Style) -> button::Appearance {
+        // Active = indigo tint bg; Inactive = transparent
+        let bg = if self.is_active {
+            Color::from_rgba(0.388, 0.408, 0.98, 0.10)   // indigo-500/10
+        } else {
+            Color::TRANSPARENT
+        };
+        let text_col = if self.is_active {
+            Color::from_rgb(0.576, 0.596, 1.0)            // indigo-400
+        } else {
+            TEXT_SECONDARY
+        };
         button::Appearance {
-            background: Some(Background::Color(if self.is_active { CARD } else { Color::TRANSPARENT })),
-            text_color: if self.is_active { TEXT_PRIMARY } else { TEXT_SECONDARY },
-            border: Border::default(),
+            background: Some(Background::Color(bg)),
+            text_color: text_col,
+            border: Border {
+                color: Color::TRANSPARENT,
+                width: 0.0,
+                radius: 12.0.into(),
+            },
             ..Default::default()
         }
     }
@@ -165,7 +196,11 @@ impl button::StyleSheet for SidebarItemButtonStyle {
         button::Appearance {
             background: Some(Background::Color(CARD)),
             text_color: TEXT_PRIMARY,
-            border: Border::default(),
+            border: Border {
+                color: Color::TRANSPARENT,
+                width: 0.0,
+                radius: 12.0.into(),
+            },
             ..Default::default()
         }
     }
@@ -277,10 +312,10 @@ pub enum Message {
 }
 
 const SIDEBAR_ITEMS: &[(&str, &str)] = &[
-    ("::", "Macros"),
-    (">>", "Prompts"),
-    ("@@", "Events"),
-    ("##", "Settings"),
+    ("▣", "Macros"),
+    ("☰", "Prompts"),
+    ("⚡", "Events"),
+    ("⚙", "Settings"),
 ];
 
 impl TextMacroApp {
@@ -1039,7 +1074,7 @@ impl Application for TextMacroApp {
         let is_collapsed = self.window_width > 800.0 && self.window_width < 1000.0;
         let is_hidden_right = self.window_width <= 800.0;
         let is_mobile = self.window_width < 800.0;
-        let sidebar_width = if is_mobile || is_collapsed { 56.0 } else { 220.0 };
+        let sidebar_width = if is_mobile || is_collapsed { 56.0 } else { 240.0 };
 
         // Title bar controls
         let btn_minimize = button(text("-").size(20).horizontal_alignment(alignment::Horizontal::Center))
@@ -1060,10 +1095,21 @@ impl Application for TextMacroApp {
             .style(theme::Button::custom(WindowControlStyle(true)))
             .on_press(Message::CloseClicked);
 
+        // Breadcrumb-style title bar matching the design
+        let tab_label = match self.active_sidebar {
+            0 => "Macros",
+            1 => "Prompts",
+            2 => "Events",
+            3 => "Settings",
+            _ => "Macros",
+        };
+
         let title_bar = container(
             row![
                 horizontal_space().width(Length::Fixed(16.0)),
-                text("TextMacro").size(14).style(theme::Text::Color(TEXT_SECONDARY)),
+                text("Workspace").size(13).style(theme::Text::Color(TEXT_SECONDARY)),
+                text(" / ").size(13).style(theme::Text::Color(Color::from_rgba(0.678, 0.667, 0.667, 0.5))),
+                text(tab_label).size(13).style(theme::Text::Color(ACCENT)),
                 horizontal_space().width(Length::Fill),
                 btn_minimize,
                 btn_maximize,
