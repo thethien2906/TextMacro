@@ -216,7 +216,7 @@ pub fn view<'a>(state: &'a EditorState, show_delete_dialog: bool, editor_font_mo
     if !state.is_active {
         // Empty state matching design: centered icon + text
         let empty_icon = container(
-            text("✎").size(36).style(theme::Text::Color(Color::from_rgba(0.678, 0.667, 0.667, 0.2)))
+            text("\u{F4C9}").size(36).font(iced_aw::BOOTSTRAP_FONT).style(theme::Text::Color(Color::from_rgba(0.678, 0.667, 0.667, 0.2)))
         )
         .width(Length::Fixed(80.0))
         .height(Length::Fixed(80.0))
@@ -350,7 +350,7 @@ pub fn view<'a>(state: &'a EditorState, show_delete_dialog: bool, editor_font_mo
     // Action buttons  ──────────────────
     let save_btn = button(
         row![
-            text("✓").size(14),
+            text("\u{F26B}").font(iced_aw::BOOTSTRAP_FONT).size(14),
             Space::new(6.0, 0.0),
             text(if state.is_new { "Create" } else { "Save Changes" }).size(13),
         ]
@@ -388,7 +388,7 @@ pub fn view<'a>(state: &'a EditorState, show_delete_dialog: bool, editor_font_mo
         } else {
             let delete_btn = button(
                 row![
-                    text("✕").size(13),
+                    text("\u{F625}").font(iced_aw::BOOTSTRAP_FONT).size(13),
                     Space::new(4.0, 0.0),
                     text("Delete").size(13),
                 ].align_items(alignment::Alignment::Center)
