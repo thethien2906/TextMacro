@@ -13,7 +13,7 @@ rdev = "0.5.3"
 log = "0.4.29"
 arboard = "3.6.1"
 iced = { version = "0.12", features = ["tokio", "image"] }
-iced_aw = { version = "0.9.0", features = ["context_menu", "menu", "card", "modal", "floating_element"] }
+iced_aw = { version = "0.9.0", features = ["context_menu", "menu", "card", "modal", "floating_element", "icons"] }
 rfd = "0.17.2"
 simplelog = "0.12.2"
 tray-icon = "0.21.3"
