@@ -146,7 +146,7 @@ pub fn view_command_palette<'a>(
 
     let max_results = 8;
 
-    let search_input: Element<'a, Message> = text_input("> search macro...", &state.query)
+    let search_input: Element<'a, Message> = text_input("\u{F52A} search macro...", &state.query)
         .on_input(Message::CommandPaletteQueryChanged)
         .size(15)
         .padding(14)
@@ -230,14 +230,14 @@ pub fn view_toasts<'a>(
             ToastType::Info => ACCENT,
         };
         let icon = match toast.toast_type {
-            ToastType::Success => "✓",
-            ToastType::Error => "✗",
-            ToastType::Warning => "⚠",
-            ToastType::Info => "ℹ",
+            ToastType::Success => "\u{F26B}",
+            ToastType::Error => "\u{F625}",
+            ToastType::Warning => "\u{F33B}",
+            ToastType::Info => "\u{F44A}",
         };
 
         let icon_bg = container(
-            text(icon).style(theme::Text::Color(color)).size(14)
+            text(icon).font(iced_aw::BOOTSTRAP_FONT).style(theme::Text::Color(color)).size(14)
         )
         .width(Length::Fixed(32.0))
         .height(Length::Fixed(32.0))
