@@ -384,7 +384,7 @@ impl Application for TextMacroApp {
 
     fn theme(&self) -> Theme {
         match self.config.theme.as_str() {
-            "light" => Theme::Light,
+            "light" | "Editorial Light" => Theme::Light,
             _ => Theme::Dark,
         }
     }
@@ -428,19 +428,7 @@ impl Application for TextMacroApp {
             Message::CloseClicked => {
                 if self.config.enable_background_service {
                     log::info!("Minimizing since background service is enabled.");
-                    self.toasts.push(Toast::new("TextMacro is running in the background".into(), ToastType::Info));
-                    let t_id = uuid::Uuid::new_v4();
-                    
-                    // We dispatch a command to dismiss the toast automatically
-                    let dismiss_cmd = Command::perform(async move {
-                        std::thread::sleep(std::time::Duration::from_millis(3000));
-                        t_id
-                    }, Message::DismissToast);
-                    
-                    Command::batch(vec![
-                        window::change_mode(window::Id::MAIN, Mode::Hidden),
-                        dismiss_cmd,
-                    ])
+                    window::change_mode(window::Id::MAIN, Mode::Hidden)
                 } else {
                     log::info!("Exiting TextMacro.");
                     window::close(window::Id::MAIN)
@@ -666,26 +654,33 @@ impl Application for TextMacroApp {
                 Command::none()
             }
             Message::EditorTriggerChanged(trigger) => {
-                self.editor_state.trigger = trigger;
-                self.editor_state.has_unsaved_changes = true;
-                if let Some(err) = &self.editor_state.validation_error {
-                    if err.contains("Trigger") {
-                        self.editor_state.validation_error = None;
+                if self.editor_state.trigger != trigger {
+                    self.editor_state.trigger = trigger;
+                    self.editor_state.has_unsaved_changes = true;
+                    if let Some(err) = &self.editor_state.validation_error {
+                        if err.contains("Trigger") {
+                            self.editor_state.validation_error = None;
+                        }
                     }
                 }
                 Command::none()
             }
             Message::EditorDescriptionChanged(desc) => {
-                self.editor_state.description = desc;
-                self.editor_state.has_unsaved_changes = true;
+                if self.editor_state.description != desc {
+                    self.editor_state.description = desc;
+                    self.editor_state.has_unsaved_changes = true;
+                }
                 Command::none()
             }
             Message::EditorContentAction(action) => {
+                let is_edit = action.is_edit();
                 self.editor_state.content.perform(action);
-                self.editor_state.has_unsaved_changes = true;
-                if let Some(err) = &self.editor_state.validation_error {
-                    if err.contains("Content") {
-                        self.editor_state.validation_error = None;
+                if is_edit {
+                    self.editor_state.has_unsaved_changes = true;
+                    if let Some(err) = &self.editor_state.validation_error {
+                        if err.contains("Content") {
+                            self.editor_state.validation_error = None;
+                        }
                     }
                 }
                 Command::none()
