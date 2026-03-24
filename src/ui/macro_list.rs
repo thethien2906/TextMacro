@@ -112,7 +112,7 @@ pub fn view<'a>(
     let search_bar_content = if !search_query.is_empty() {
         row![
             search_input,
-            button(text("×").size(16))
+            button(text("\u{F62A}").size(16).font(iced_aw::BOOTSTRAP_FONT))
                 .style(theme::Button::custom(ClearBtnStyle))
                 .on_press(Message::ClearSearch)
         ]
@@ -157,7 +157,7 @@ pub fn view<'a>(
         };
 
         let empty_icon = container(
-            text("✦").size(32).style(theme::Text::Color(Color::from_rgba(0.678, 0.667, 0.667, 0.2)))
+            text("\u{F5AF}").size(32).font(iced_aw::BOOTSTRAP_FONT).style(theme::Text::Color(Color::from_rgba(0.678, 0.667, 0.667, 0.2)))
         )
         .width(Length::Fixed(64.0))
         .height(Length::Fixed(64.0))
@@ -268,7 +268,7 @@ pub fn view<'a>(
     let new_btn = container(
         button(
             row![
-                text("+").size(16).style(theme::Text::Color(Color::BLACK)),
+                text("\u{F4FE}").size(16).font(iced_aw::BOOTSTRAP_FONT).style(theme::Text::Color(Color::BLACK)),
                 Space::new(6.0, 0.0),
                 text("New Macro").size(13).style(theme::Text::Color(Color::BLACK))
             ]
