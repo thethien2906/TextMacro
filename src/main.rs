@@ -1,3 +1,4 @@
+#![windows_subsystem = "windows"]
 //! TextMacro – A lightweight automation tool for creating macros
 //! triggered by typed text, keyboard shortcuts, or system events.
 
