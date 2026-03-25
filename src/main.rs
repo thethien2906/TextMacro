@@ -52,7 +52,12 @@ fn main() -> iced::Result {
     setup_logging();
     log::info!("Starting TextMacro engine...");
 
-    let icon_path = std::env::current_dir().unwrap().join("assets").join("logo.png");
+    let icon_path = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+        .unwrap_or_default()
+        .join("assets")
+        .join("logo.png");
     let (rgba, width, height) = if icon_path.exists() {
         let image = image::open(&icon_path).expect("Failed to open logo").to_rgba8();
         let (w, h) = image.dimensions();

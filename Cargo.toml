@@ -3,6 +3,10 @@ name = "textmacro"
 version = "0.1.0"
 edition = "2021"
 description = "A lightweight automation tool for creating macros triggered by typed text, keyboard shortcuts, or system events"
+build = "build.rs"
+
+[build-dependencies]
+winresource = "0.1"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
