@@ -3,3 +3,5 @@
 *.md
 
 /Documents
+
+dist/
