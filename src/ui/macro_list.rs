@@ -201,13 +201,13 @@ pub fn view<'a>(
 
             // Active indicator (right border)
             let left_border = if is_selected {
-                container(Space::new(3.0, Length::Fill))
+                container(Space::new(3.0, Length::Fixed(16.0)))
                     .style(theme::Container::Custom(Box::new(RadiusBoxStyle(
                         Color::from_rgb(0.388, 0.408, 0.98),  // indigo-500
                         2.0,
                     ))))
             } else {
-                container(Space::new(3.0, Length::Fill))
+                container(Space::new(3.0, Length::Fixed(16.0)))
             };
 
             let title_text = text(&m.trigger)

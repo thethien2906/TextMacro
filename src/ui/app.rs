@@ -18,7 +18,7 @@ use crate::storage::macro_repository::StorageManager;
 use crate::ui::macro_list;
 use crate::ui::macro_editor;
 use crate::ui::settings_panel;
-use crate::ui::overlays::{Toast, ToastType, CommandPaletteState};
+use crate::ui::overlays::{CommandPaletteState};
 use iced::widget::text_editor;
 // Editorial Macro Suite — Design System Color Tokens
 pub const BACKGROUND: Color = Color::from_rgb(0.055, 0.055, 0.055);          // #0e0e0e  surface
@@ -224,7 +224,6 @@ pub struct TextMacroApp {
     config_validation_errors: std::collections::HashMap<String, String>,
     is_recording_shortcut: bool,
     command_palette: CommandPaletteState,
-    toasts: Vec<Toast>,
 }
 
 #[derive(Debug)]
@@ -300,9 +299,6 @@ pub enum Message {
     ToggleMacroEnabledReq(String),
     DuplicateMacroReq(String),
     RequestDeleteMacroReq(String),
-    DismissToast(uuid::Uuid),
-    AddToast(ToastType, String),
-    TickToasts(std::time::Instant),
     PollEngine(std::time::Instant),
     ImportMacrosClicked,
     ExportMacrosClicked,
@@ -372,7 +368,6 @@ impl Application for TextMacroApp {
                 config_validation_errors: std::collections::HashMap::new(),
                 is_recording_shortcut: false,
                 command_palette: CommandPaletteState::default(),
-                toasts: Vec::new(),
             },
             Command::none(),
         )
@@ -890,15 +885,9 @@ impl Application for TextMacroApp {
                 filtered.sort_by(|a, b| a.trigger.cmp(&b.trigger));
                 
                 if let Some(m) = filtered.get(self.command_palette.selected_index) {
-                    let t_id = uuid::Uuid::new_v4();
-                    let mut t = Toast::new(format!("Executed: {}", m.trigger), ToastType::Success);
-                    t.id = t_id.clone();
-                    self.toasts.push(t);
+                    
                     self.command_palette.is_open = false;
-                    return Command::perform(async move {
-                        std::thread::sleep(std::time::Duration::from_millis(3000));
-                        t_id
-                    }, Message::DismissToast);
+                    
                 }
                 
                 self.command_palette.is_open = false;
@@ -915,11 +904,8 @@ impl Application for TextMacroApp {
                 
                 if let Some(s) = enabled_str {
                     let m_id = id.clone();
-                    self.toasts.push(Toast::new(s, ToastType::Info));
-                    return Command::perform(async move {
-                        std::thread::sleep(std::time::Duration::from_millis(3000));
-                        m_id
-                    }, |i| Message::DismissToast(uuid::Uuid::parse_str(&i).unwrap_or_default()));
+                    
+                    
                 }
                 Command::none()
             }
@@ -938,12 +924,9 @@ impl Application for TextMacroApp {
                     };
                     let _ = self.engine_tx.send(crate::models::engine_commands::EngineCommand::CreateMacro(req));
                     
-                    self.toasts.push(Toast::new("Macro duplicate requested".into(), ToastType::Success));
+                    
                     let t_id = uuid::Uuid::new_v4();
-                    return Command::perform(async move {
-                        std::thread::sleep(std::time::Duration::from_millis(3000));
-                        t_id
-                    }, Message::DismissToast);
+                    
                 }
                 Command::none()
             }
@@ -953,21 +936,6 @@ impl Application for TextMacroApp {
                     self.selected_macro_id = None;
                     self.editor_state = EditorState::default();
                 }
-                let t_id = uuid::Uuid::new_v4();
-                let mut t = Toast::new("Macro deletion requested".into(), ToastType::Warning);
-                t.id = t_id.clone();
-                self.toasts.push(t);
-                return Command::perform(async move {
-                    std::thread::sleep(std::time::Duration::from_millis(3000));
-                    t_id
-                }, Message::DismissToast);
-            }
-            Message::DismissToast(id) => {
-                self.toasts.retain(|t| t.id != id);
-                Command::none()
-            }
-            Message::AddToast(t_type, msg) => {
-                self.toasts.push(Toast::new(msg, t_type));
                 Command::none()
             }
             Message::PollEngine(_) => {
@@ -975,13 +943,18 @@ impl Application for TextMacroApp {
                     match response {
                         crate::models::engine_responses::EngineResponse::MacroCreated(m) => {
                             self.macros.push(m.clone());
-                            self.toasts.push(Toast::new("Macro Created".into(), ToastType::Success));
+                            if self.editor_state.is_new && self.editor_state.trigger == m.trigger {
+                                self.selected_macro_id = Some(m.id.clone());
+                                self.editor_state.is_new = false;
+                                self.editor_state.original_id = Some(m.id.clone());
+                                self.search_query.clear();
+                            }
                         }
                         crate::models::engine_responses::EngineResponse::MacroUpdated(m) => {
                             if let Some(existing) = self.macros.iter_mut().find(|ext| ext.id == m.id) {
                                 *existing = m;
                             }
-                            self.toasts.push(Toast::new("Macro Updated".into(), ToastType::Success));
+                            
                         }
                         crate::models::engine_responses::EngineResponse::MacroDeleted(id) => {
                             self.macros.retain(|m| m.id != id);
@@ -989,7 +962,7 @@ impl Application for TextMacroApp {
                                 self.selected_macro_id = None;
                                 self.editor_state.is_active = false;
                             }
-                            self.toasts.push(Toast::new("Macro Deleted".into(), ToastType::Info));
+                            
                         }
                         crate::models::engine_responses::EngineResponse::MacroToggled(id, state) => {
                             if let Some(existing) = self.macros.iter_mut().find(|ext| ext.id == id) {
@@ -1000,15 +973,15 @@ impl Application for TextMacroApp {
                             }
                         }
                         crate::models::engine_responses::EngineResponse::Error(err) => {
-                            self.toasts.push(Toast::new(format!("Error: {}", err.message), ToastType::Error));
+                            
                         }
                         crate::models::engine_responses::EngineResponse::ImportComplete(res) => {
-                            self.toasts.push(Toast::new(format!("Imported {} macros ({} skipped)", res.imported_count, res.skipped_count), ToastType::Success));
+                            
                             // Request refresh of macros
                             let _ = self.engine_tx.send(crate::models::engine_commands::EngineCommand::SearchMacros("".into()));
                         }
                         crate::models::engine_responses::EngineResponse::ExportComplete(res) => {
-                            self.toasts.push(Toast::new(format!("Exported {} macros successfully", res.exported_count), ToastType::Success));
+                            
                         }
                         crate::models::engine_responses::EngineResponse::SearchResults(loaded_macros) => {
                             // If it's a full reload (like after import when search_query is empty, or during active search)
@@ -1026,10 +999,6 @@ impl Application for TextMacroApp {
                         _ => {}
                     }
                 }
-                Command::none()
-            }
-            Message::TickToasts(_) => {
-                self.toasts.retain(|t| t.created_at.elapsed() < t.duration);
                 Command::none()
             }
             Message::ImportMacrosClicked => {
@@ -1255,6 +1224,6 @@ impl Application for TextMacroApp {
             .into();
             
         let modal = crate::ui::overlays::view_command_palette(main_container, &self.command_palette, &self.macros);
-        crate::ui::overlays::view_toasts(modal, &self.toasts)
+        modal
     }
 }
