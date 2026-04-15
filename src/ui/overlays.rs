@@ -2,46 +2,11 @@
 use iced::widget::{button, column, container, row, text, text_input, Space};
 use iced::{alignment, theme, Background, Border, Color, Element, Length, Theme};
 use iced_aw::{Modal, FloatingElement};
-use std::time::{Instant, Duration};
-use uuid::Uuid;
 
 use crate::models::macro_model::Macro;
 use crate::ui::app::{
-    Message, CARD, ACCENT, TEXT_PRIMARY, TEXT_SECONDARY, SUCCESS, ERROR,
+    Message, CARD, ACCENT, TEXT_PRIMARY, TEXT_SECONDARY,
 };
-
-// ════════════════════════════════
-//  Toast Types & Data
-// ════════════════════════════════
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum ToastType {
-    Success,
-    Error,
-    Warning,
-    Info,
-}
-
-#[derive(Clone, Debug)]
-pub struct Toast {
-    pub id: Uuid,
-    pub message: String,
-    pub toast_type: ToastType,
-    pub created_at: Instant,
-    pub duration: Duration,
-}
-
-impl Toast {
-    pub fn new(message: String, toast_type: ToastType) -> Self {
-        Self {
-            id: Uuid::new_v4(),
-            message,
-            toast_type,
-            created_at: Instant::now(),
-            duration: Duration::from_millis(3000),
-        }
-    }
-}
 
 // ════════════════════════════════
 //  Command Palette State
@@ -59,25 +24,6 @@ impl Default for CommandPaletteState {
              is_open: false,
              query: String::new(),
              selected_index: 0,
-        }
-    }
-}
-
-// ────────────────────────────────
-//  Glassmorphic toast card style
-// ────────────────────────────────
-struct ToastCardStyle(#[allow(dead_code)] Color);
-impl container::StyleSheet for ToastCardStyle {
-    type Style = Theme;
-    fn appearance(&self, _style: &Self::Style) -> container::Appearance {
-        container::Appearance {
-            background: Some(Background::Color(Color::from_rgba(0.125, 0.125, 0.122, 0.8))),
-            border: Border {
-                color: Color::from_rgba(1.0, 1.0, 1.0, 0.05),
-                width: 1.0,
-                radius: 16.0.into(),
-            },
-            ..Default::default()
         }
     }
 }
@@ -213,77 +159,3 @@ pub fn view_command_palette<'a>(
 // ════════════════════════════════
 //  Toasts View
 // ════════════════════════════════
-pub fn view_toasts<'a>(
-    content: Element<'a, Message>,
-    toasts: &'a [Toast],
-) -> Element<'a, Message> {
-    if toasts.is_empty() {
-        return content;
-    }
-
-    let mut col = column![].spacing(8);
-    for toast in toasts.iter().rev().take(3).rev() {
-        let color = match toast.toast_type {
-            ToastType::Success => SUCCESS,
-            ToastType::Error => ERROR,
-            ToastType::Warning => Color::from_rgb(0.984, 0.749, 0.141),
-            ToastType::Info => ACCENT,
-        };
-        let icon = match toast.toast_type {
-            ToastType::Success => "\u{F26B}",
-            ToastType::Error => "\u{F625}",
-            ToastType::Warning => "\u{F33B}",
-            ToastType::Info => "\u{F44A}",
-        };
-
-        let icon_bg = container(
-            text(icon).font(iced_aw::BOOTSTRAP_FONT).style(theme::Text::Color(color)).size(14)
-        )
-        .width(Length::Fixed(32.0))
-        .height(Length::Fixed(32.0))
-        .center_x()
-        .center_y()
-        .style(move |_theme: &Theme| container::Appearance {
-            background: Some(Background::Color(Color::from_rgba(color.r, color.g, color.b, 0.15))),
-            border: Border {
-                color: Color::TRANSPARENT,
-                width: 0.0,
-                radius: 16.0.into(),
-            },
-            ..Default::default()
-        });
-
-        let row_content = row![
-            icon_bg,
-            Space::new(10.0, 0.0),
-            column![
-                text(&toast.message).style(theme::Text::Color(TEXT_PRIMARY)).size(13),
-            ],
-            Space::new(Length::Fill, 0.0),
-            button(text("×").size(14).style(theme::Text::Color(TEXT_SECONDARY)))
-                .style(theme::Button::custom(crate::ui::macro_list::ClearBtnStyle))
-                .on_press(Message::DismissToast(toast.id))
-        ]
-        .align_items(alignment::Alignment::Center)
-        .padding(iced::Padding { top: 12.0, bottom: 12.0, left: 16.0, right: 16.0 });
-
-        col = col.push(
-            container(row_content)
-                .width(Length::Fixed(340.0))
-                .style(theme::Container::Custom(Box::new(ToastCardStyle(color))))
-        );
-    }
-
-    let toast_container = container(col)
-        .padding(20)
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .align_x(alignment::Horizontal::Right)
-        .align_y(alignment::Vertical::Top);
-
-    FloatingElement::new(
-        content,
-        toast_container
-    )
-    .into()
-}
